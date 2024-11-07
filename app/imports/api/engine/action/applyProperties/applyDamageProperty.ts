@@ -1,66 +1,92 @@
-// TODO
+import { some, includes, difference, intersection } from 'lodash';
 
-export default function applyDamage(node, actionContext) {
-  applyNodeTriggers(node, 'before', actionContext);
+import { getConstantValueFromScope } from '/imports/api/creature/creatures/CreatureVariables';
+import { EngineAction } from '/imports/api/engine/action/EngineActions';
+import { applyDefaultAfterPropTasks } from '/imports/api/engine/action/functions/applyTaskGroups';
+import { getEffectiveActionScope } from '/imports/api/engine/action/functions/getEffectiveActionScope';
+import recalculateCalculation from '/imports/api/engine/action/functions/recalculateCalculation';
+import { PropTask } from '/imports/api/engine/action/tasks/Task';
+import TaskResult from '/imports/api/engine/action/tasks/TaskResult';
+import { isFiniteNode } from '/imports/parser/parseTree/constant';
+import resolve from '/imports/parser/resolve';
+import toString from '/imports/parser/toString';
+import { getPropertiesOfType } from '/imports/api/engine/loadCreatures';
+import applyTask from '/imports/api/engine/action/tasks/applyTask';
+import InputProvider from '/imports/api/engine/action/functions/userInput/InputProvider';
+import getEffectivePropTags from '/imports/api/engine/computation/utility/getEffectivePropTags';
+import Context from '/imports/parser/types/Context';
+import applySavingThrowProperty from '/imports/api/engine/action/applyProperties/applySavingThrowProperty';
 
-  const prop = node.doc
-  const scope = actionContext.scope;
-
-  // Skip if there is no parse node to work with
-  if (!prop.amount?.parseNode) return;
+export default async function applyDamageProperty(
+  task: PropTask, action: EngineAction, result: TaskResult, inputProvider: InputProvider
+) {
+  const prop = task.prop;
+  const scope = getEffectiveActionScope(action);
 
   // Choose target
-  let damageTargets = prop.target === 'self' ? [actionContext.creature] : actionContext.targets;
+  const damageTargets = prop.target === 'self' ? [action.creatureId] : task.targetIds;
+
+  // Skip if there is no parse node to work with
+  if (!prop.amount?.valueNode) {
+    return applyDefaultAfterPropTasks(action, prop, damageTargets, inputProvider);
+  }
+
   // Determine if the hit is critical
-  let criticalHit = scope['~criticalHit']?.value &&
-    prop.damageType !== 'healing' // Can't critically heal
-    ;
+  const criticalHit = await getConstantValueFromScope('~criticalHit', scope)
+    && prop.damageType !== 'healing'; // Can't critically heal
   // Double the damage rolls if the hit is critical
-  let context = new Context({
+  const context = new Context({
     options: { doubleRolls: criticalHit },
   });
 
   // Gather all the lines we need to log into an array
-  const logValue = [];
+  const logValue: string[] = [];
   const logName = prop.damageType === 'healing' ? 'Healing' : 'Damage';
 
   // roll the dice only and store that string
-  recalculateCalculation(prop.amount, actionContext, 'compile');
-  const { result: rolled } = resolve('roll', prop.amount.valueNode, scope, context);
+  await recalculateCalculation(prop.amount, action, 'compile', inputProvider);
+  const { result: rolled } = await resolve('roll', prop.amount.valueNode, scope, context, inputProvider);
   if (rolled.parseType !== 'constant') {
     logValue.push(toString(rolled));
   }
-  logErrors(context.errors, actionContext);
+  result.appendParserContextErrors(context, damageTargets);
 
   // Reset the errors so we don't log the same errors twice
   context.errors = [];
 
   // Resolve the roll to a final value
-  const { result: reduced } = resolve('reduce', rolled, scope, context);
-  logErrors(context.errors, actionContext);
+  const { result: reduced } = await resolve('reduce', rolled, scope, context, inputProvider);
+  result.appendParserContextErrors(context, damageTargets);
 
   // Store the result
+  let damage: number | undefined = undefined;
   if (reduced.parseType === 'constant') {
     prop.amount.value = reduced.value;
+    if (typeof reduced.value === 'number') {
+      damage = reduced.value;
+    }
   } else if (reduced.parseType === 'error') {
     prop.amount.value = null;
   } else {
     prop.amount.value = toString(reduced);
   }
-  let damage = +reduced.value;
 
-  // If we didn't end up with a constant of finite amount, give up
-  if (reduced?.parseType !== 'constant' || !isFinite(reduced.value)) {
-    return applyChildren(node, actionContext);
+  // If we didn't end up with damage of finite amount, give up
+  if (
+    typeof damage !== 'number'
+    || !isFinite(damage)
+  ) {
+    return applyDefaultAfterPropTasks(action, prop, damageTargets, inputProvider);
   }
 
   // Round the damage to a whole number
   damage = Math.floor(damage);
-  scope['~damage'] = damage;
+  scope['~damage'] = { value: damage };
 
   // Convert extra damage into the stored type
-  if (prop.damageType === 'extra' && scope['~lastDamageType']?.value) {
-    prop.damageType = scope['~lastDamageType']?.value;
+  const lastDamageType = await getConstantValueFromScope('~lastDamageType', scope);
+  if (prop.damageType === 'extra' && typeof lastDamageType === 'string') {
+    prop.damageType = lastDamageType;
   }
   // Store current damage type
   if (prop.damageType !== 'healing') {
@@ -68,29 +94,36 @@ export default function applyDamage(node, actionContext) {
   }
 
   // Memoise the damage suffix for the log
-  let suffix = (criticalHit ? ' critical ' : ' ') +
+  const suffix = (criticalHit ? 'critical ' : '') +
     prop.damageType +
-    (prop.damageType !== 'healing' ? ' damage ' : '');
+    (prop.damageType !== 'healing' ? ' damage' : '');
 
   // If there is a save, calculate the save damage
-  let damageOnSave, saveNode, saveRoll;
+  let damageOnSave, saveProp, saveRoll;
   if (prop.save) {
     if (prop.save.damageFunction?.calculation) {
-      recalculateCalculation(prop.save.damageFunction, actionContext, undefined, 'compile');
-      let { result: saveDamageRolled } = resolve('roll', prop.save.damageFunction.valueNode, scope, context);
+      await recalculateCalculation(prop.save.damageFunction, action, 'compile', inputProvider);
+      context.errors = [];
+      const { result: saveDamageRolled } = await resolve(
+        'roll', prop.save.damageFunction.valueNode, scope, context, inputProvider
+      );
       saveRoll = toString(saveDamageRolled);
-      let { result: saveDamageResult } = resolve('reduce', saveDamageRolled, scope, context);
+      const { result: saveDamageResult } = await resolve(
+        'reduce', saveDamageRolled, scope, context, inputProvider
+      );
+      result.appendParserContextErrors(context, damageTargets);
       // If we didn't end up with a constant of finite amount, give up
-      if (reduced?.parseType !== 'constant' || !isFinite(reduced.value)) {
-        return applyChildren(node, actionContext);
+      if (
+        !isFiniteNode(saveDamageResult)
+      ) {
+        return applyDefaultAfterPropTasks(action, prop, damageTargets, inputProvider);
       }
-      damageOnSave = +saveDamageResult.value;
       // Round the damage to a whole number
-      damageOnSave = Math.floor(damageOnSave);
+      damageOnSave = Math.floor(saveDamageResult.value);
     } else {
       damageOnSave = Math.floor(damage / 2);
     }
-    saveNode = {
+    saveProp = {
       node: {
         ...prop.save,
         name: prop.save.stat,
@@ -102,14 +135,16 @@ export default function applyDamage(node, actionContext) {
 
   if (damageTargets && damageTargets.length) {
     // Iterate through all the targets
-    damageTargets.forEach(target => {
-      actionContext.target = [target];
-      let damageToApply = damage;
+    for (const target of damageTargets) {
+      let damageToApply = damage || 0;
 
       // If there is a saving throw, apply that first
       if (prop.save) {
-        applySavingThrow(saveNode, actionContext);
-        if (scope['~saveSucceeded']?.value) {
+        await applySavingThrowProperty({
+          prop: saveProp,
+          targetIds: task.targetIds,
+        }, action, result, inputProvider);
+        if (await getConstantValueFromScope('~saveSucceeded', scope)) {
           // Log the total damage
           logValue.push(toString(reduced));
           // Log the save damage
@@ -136,49 +171,33 @@ export default function applyDamage(node, actionContext) {
       });
 
       // Deal the damage to the target
-      let damageDealt = dealDamage({
-        target,
-        damageType: prop.damageType,
-        amount: damageToApply,
-        actionContext
-      });
-
-      // Log the damage done
-      if (target._id === actionContext.creature._id) {
-        // Target is same as self, log damage as such
-        logValue.push(`**${damageDealt}** ${suffix}  to self`);
-      } else {
-        logValue.push(`Dealt **${damageDealt}** ${suffix} ${target.name && ' to '}${target.name}`);
-        // Log the damage received on that creature's log as well
-        insertCreatureLog.call({
-          log: {
-            creatureId: target._id,
-            content: [{
-              name,
-              value: `Received **${damageDealt}** ${suffix}`,
-            }],
-          }
-        });
-      }
-    });
+      await dealDamage(
+        action, prop, result, inputProvider, target, prop.damageType, damageToApply
+      );
+    }
   } else {
     // There are no targets, just log the result
     logValue.push(`**${damage}** ${suffix}`);
     if (prop.save) {
-      applySavingThrow(saveNode, actionContext);
+      await applySavingThrowProperty(saveProp, action, result, inputProvider);
+      await applySavingThrowProperty({
+        prop: saveProp,
+        targetIds: task.targetIds,
+      }, action, result, inputProvider);
       logValue.push(`**${damageOnSave}** ${suffix} on a successful save`);
     }
   }
-  if (!prop.silent) actionContext.addLog({
+  if (logValue.length) result.appendLog({
     name: logName,
     value: logValue.join('\n'),
     inline: true,
-  });
-  return applyChildren(node, actionContext);
+    silenced: prop.silent,
+  }, damageTargets);
+  return applyDefaultAfterPropTasks(action, prop, damageTargets, inputProvider);
 }
 
-function damageFunctionText(save, scope, context, actionContext) {
-  if (!save) return [];
+function damageFunctionText(save) {
+  if (!save) return;
   if (!save.damageFunction) {
     return '**Half damage on successful save**';
   }
@@ -239,9 +258,12 @@ function multiplierAppliesTo(damageProp, multiplierType) {
   }
 }
 
-function dealDamage({ target, damageType, amount, actionContext }) {
+async function dealDamage(
+  action: EngineAction, prop: any, result: TaskResult, userInput: InputProvider,
+  targetId: string, damageType: string, amount: number
+) {
   // Get all the health bars and do damage to them
-  let healthBars = getPropertiesOfType(target._id, 'attribute');
+  let healthBars = getPropertiesOfType(targetId, 'attribute');
 
   // Keep only the healthbars that can take damage/healing
   healthBars = healthBars.filter((bar) => {
@@ -276,24 +298,19 @@ function dealDamage({ target, damageType, amount, actionContext }) {
   const totalDamage = amount;
   let damageLeft = totalDamage;
   if (damageType === 'healing') damageLeft = -totalDamage;
-  healthBars.forEach(healthBar => {
+  for (const healthBar of healthBars) {
     if (damageLeft === 0) return;
-    // Replace the healthbar by the one in the action context if we can
-    // The damagePropertyWork function bashes the prop with the damage
-    // So we can use the new value in later action properties
-    if (healthBar.variableName) {
-      const targetHealthBar = target.variables[healthBar.variableName];
-      if (targetHealthBar?._id === healthBar._id) {
-        healthBar = targetHealthBar;
-      }
-    }
     // Do the damage
-    let damageAdded = damagePropertyWork({
-      prop: healthBar,
-      operation: 'increment',
-      value: damageLeft,
-      actionContext
-    });
+    const damageAdded = await applyTask(action, {
+      targetIds: [targetId],
+      subtaskFn: 'damageProp',
+      params: {
+        operation: 'increment',
+        value: +damageLeft || 0,
+        targetProp: healthBar,
+      },
+    }, userInput);
+
     damageLeft -= damageAdded;
     // Prevent overflow
     if (
@@ -303,6 +320,6 @@ function dealDamage({ target, damageType, amount, actionContext }) {
     ) {
       damageLeft = 0;
     }
-  });
+  }
   return totalDamage;
 }

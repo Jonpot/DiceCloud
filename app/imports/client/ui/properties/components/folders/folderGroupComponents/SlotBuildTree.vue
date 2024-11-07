@@ -8,7 +8,7 @@
 
 <script lang="js">
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
-import { docsToForest as nodeArrayToTree } from '/imports/api/parenting/parentingFunctions';
+import { getFilter, docsToForest } from '/imports/api/parenting/parentingFunctions';
 import BuildTreeNodeList from '/imports/client/ui/creature/buildTree/BuildTreeNodeList.vue';
 
 function traverse(tree, callback, parents = []){
@@ -33,7 +33,7 @@ export default {
       const slots = CreatureProperties.find({
         $and: [ {
           $or: [
-            { 'ancestors.id': this.model._id, },
+            { ...getFilter.descendants(this.model) },
             { '_id': this.model._id, },
           ],
         }, {
@@ -48,21 +48,21 @@ export default {
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 }
+        sort: { left: 1 }
       });
       const slotIds = slots.map(s => s._id);
       const slotChildren = CreatureProperties.find({
-        'parent.id': { $in: slotIds },
+        'parentId': { $in: slotIds },
         removed: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
-      const tree = nodeArrayToTree([
+      const tree = docsToForest([
         ...slots.fetch(),
         ...slotChildren.fetch()
       ]);
       traverse(tree, (child, parents) => {
-        const model = child.node;
+        const model = child.doc;
         const isSlotWithSpace = model.type === 'propertySlot' && (
           model.spaceLeft > 0 ||
           !model.quantityExpected ||
@@ -71,7 +71,7 @@ export default {
         if (isSlotWithSpace) {
           model._canFill = true;
           parents.forEach(node => {
-            node.node._descendantCanFill = true;
+            node.doc._descendantCanFill = true;
           });
         }
       });

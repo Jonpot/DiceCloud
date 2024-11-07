@@ -5,12 +5,11 @@ import { applyTriggers } from '/imports/api/engine/action/functions/applyTaskGro
 import { getEffectiveActionScope } from '/imports/api/engine/action/functions/getEffectiveActionScope';
 import getPropertyTitle from '/imports/api/utility/getPropertyTitle';
 import { getSingleProperty } from '/imports/api/engine/loadCreatures';
+import numberToSignedString from '/imports/api/utility/numberToSignedString';
 
 export default async function applyDamagePropTask(
   task: DamagePropTask, action: EngineAction, result: TaskResult, userInput
-): Promise<void> {
-  const prop = task.prop;
-
+): Promise<number> {
   if (task.targetIds.length > 1) {
     throw 'This subtask can only be called on a single target';
   }
@@ -20,9 +19,11 @@ export default async function applyDamagePropTask(
   const { title, operation } = task.params;
   let targetProp = task.params.targetProp;
 
+  if (!targetProp) throw new Meteor.Error('not-found', 'Target property is required')
+
   // Set the scope properties
   result.pushScope = {};
-  if (prop.operation === 'increment') {
+  if (operation === 'increment') {
     if (value >= 0) {
       result.pushScope['~damage'] = { value };
     } else {
@@ -39,7 +40,11 @@ export default async function applyDamagePropTask(
   }
 
   // Run the before triggers which may change scope properties
-  await applyTriggers(action, targetProp, [action.creatureId], 'damageProperty.before', userInput);
+  await applyTriggers(action, targetProp, [targetId], 'damageTriggerIds.before', userInput);
+
+  // Create a new result after triggers have run
+  result = new TaskResult(task.targetIds);
+  action.results.push(result);
 
   // Refetch the scope properties
   const scope = await getEffectiveActionScope(action);
@@ -56,7 +61,8 @@ export default async function applyDamagePropTask(
   } else {
     value = scope['~set']?.value;
   }
-  const targetPropId = scope['~attributeDamaged']?._propId;
+  const targetPropId = scope['~attributeDamaged']?._propId ??
+    scope['~attributeDamaged']?._id;
 
   // If there are no targets, just log the result that would apply and end
   if (!task.targetIds?.length) {
@@ -67,14 +73,14 @@ export default async function applyDamagePropTask(
       value: `${statName}${operation === 'set' ? ' set to' : ''}` +
         ` ${value}`,
       inline: true,
-      silenced: prop.silent,
+      silenced: task.silent ?? false,
     }, task.targetIds);
   }
 
   let damage, newValue, increment;
   targetProp = await getSingleProperty(targetId, targetPropId);
 
-  if (!targetProp) return;
+  if (!targetProp) return value;
 
   if (operation === 'set') {
     const total = targetProp.total || 0;
@@ -96,11 +102,12 @@ export default async function applyDamagePropTask(
       }],
       contents: [{
         name: title,
-        value: `${getPropertyTitle(targetProp)} set to ${value}`,
+        value: `${getPropertyTitle(targetProp)} set from ${targetProp.value} to ${value}`,
         inline: true,
-        silenced: prop.silent,
+        ...task.silent && { silenced: true },
       }]
     });
+    if (targetId === action.creatureId) setScope(result, targetProp, newValue, damage);
   } else if (operation === 'increment') {
     const currentValue = targetProp.value || 0;
     const currentDamage = targetProp.damage || 0;
@@ -120,12 +127,34 @@ export default async function applyDamagePropTask(
         type: targetProp.type,
       }],
       contents: [{
-        name: 'Attribute damage',
-        value: `${getPropertyTitle(targetProp)} ${value}`,
+        name: increment >= 0 ? 'Attribute damaged' : 'Attribute restored',
+        value: `${numberToSignedString(-increment)} ${getPropertyTitle(targetProp)}`,
         inline: true,
-        silenced: prop.silent,
+        ...task.silent && { silenced: true },
       }]
     });
+    if (targetId === action.creatureId) setScope(result, targetProp, newValue, damage);
   }
-  await applyTriggers(action, prop, [action.creatureId], 'damageProperty.after', userInput);
+  await applyTriggers(action, targetProp, [targetId], 'damageTriggerIds.after', userInput);
+  await applyTriggers(action, targetProp, [targetId], 'damageTriggerIds.afterChildren', userInput);
+  return increment;
+}
+
+// Update the scope with the attribute, but updated to the new value
+// TODO ideally we re-write the getEffectiveActionScope code to be more
+// getSomethingFromScope which does the same work, but for a single key, and includes all
+// updates to the doc returned that are already applied in the result array
+function setScope(result, targetProp, newValue, damage) {
+  // This isn't the defining property, don't bother
+  if (targetProp.overridden) return;
+  const key = targetProp.variableName;
+  // No variable name can't set scope
+  if (!key) return;
+  // Make sure scope is defined
+  if (!result.scope) result.scope = {};
+  result.scope[key] = {
+    ...EJSON.clone(targetProp),
+    value: newValue,
+    damage,
+  };
 }

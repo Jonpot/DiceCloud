@@ -206,7 +206,6 @@ import getThemeColor from '/imports/client/ui/utility/getThemeColor';
 import PropertySelector from '/imports/client/ui/properties/shared/PropertySelector.vue';
 import {snackbar} from '/imports/client/ui/components/snackbars/SnackbarQueue';
 import PropertyForm from '/imports/client/ui/properties/PropertyForm.vue';
-import SimpleSchema from 'simpl-schema';
 
 export default {
   components: {
@@ -372,9 +371,9 @@ export default {
         _searchResult: true
       },{
         sort: {
-          'ancestors.0.id': 1,
           name: 1,
-          order: 1,
+          type: 1,
+          left: 1,
         },
       });
     },

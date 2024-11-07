@@ -37,7 +37,7 @@ const magicSchools = [
   'transmutation',
 ];
 
-let SpellSchema = new SimpleSchema({})
+const SpellSchema = new SimpleSchema({})
   .extend(ActionSchema)
   .extend({
     name: {
@@ -115,10 +115,10 @@ let SpellSchema = new SimpleSchema({})
     },
   });
 
-const ComputedOnlySpellSchema = new SimpleSchema()
+const ComputedOnlySpellSchema = new SimpleSchema({})
   .extend(ComputedOnlyActionSchema);
 
-const ComputedSpellSchema = new SimpleSchema()
+const ComputedSpellSchema = new SimpleSchema({})
   .extend(SpellSchema)
   .extend(ComputedOnlySpellSchema);
 

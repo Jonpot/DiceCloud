@@ -1,6 +1,6 @@
 <template lang="html">
   <v-card
-    :style="`height: ${height}px; width: ${width}px; overflow: hidden;`"
+    :style="`height: ${height}px; width: ${width}px;`"
     class="tabletop-creature-card"
     :class="{ active }"
     :hover="hasClickListener"
@@ -31,7 +31,6 @@
         style="opacity: 0.7; margin-top: 2px"
       />
     </v-img>
-    <card-highlight :active="hover" />
     <div class="d-flex justify-center">
       <v-scale-transition>
         <v-btn
@@ -40,7 +39,7 @@
           :elevation="targeted ? 8 : 2"
           fab
           small
-          @click.stop="targeted ? $emit('untarget') : $emit('target')"
+          @click.stop.prevent="targeted ? $emit('untarget') : $emit('target')"
         >
           <v-icon>{{ targeted ? 'mdi-target' : 'mdi-target' }}</v-icon>
         </v-btn>
@@ -89,7 +88,7 @@ export default {
   meteor: {
     healthBars() {
       const folderIds = CreatureProperties.find({
-        'ancestors.id': this.model._id,
+        'root.id': this.model._id,
         type: 'folder',
         groupStats: true,
         hideStatsGroup: true,
@@ -99,8 +98,8 @@ export default {
 
       // Get the properties that need to be shown as a health bar
       return CreatureProperties.find({
-        'ancestors.id': this.model._id,
-        'parent.id': {
+        'root.id': this.model._id,
+        'parentId': {
           $nin: folderIds,
         },
         type: 'attribute',
@@ -108,6 +107,7 @@ export default {
         healthBarNoDamage: { $ne: true },
         inactive: { $ne: true } ,
         removed: { $ne: true },
+        total: {$ne: 0},
       }, {
         sort: {
           order: 1,

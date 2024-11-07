@@ -6,8 +6,17 @@ export default function writeScope(creatureId, computation) {
   if (!creatureId) throw 'creatureId is required';
   const scope = computation.scope;
   let variables = computation.variables;
+  // If the variables are not set, check if they can be fetched
   if (!variables) {
-    CreatureVariables.insert({ _creatureId: creatureId });
+    variables = CreatureVariables.findOne({
+      _creatureId: creatureId
+    });
+  }
+  // Otherwise create a new variables document
+  if (!variables) {
+    CreatureVariables.insert({
+      _creatureId: creatureId
+    });
     variables = {};
   }
   delete variables._id;

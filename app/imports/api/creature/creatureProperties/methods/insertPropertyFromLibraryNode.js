@@ -117,7 +117,7 @@ function insertPropertyFromNode(nodeId, root, parentId) {
   return node;
 }
 
-function storeLibraryNodeReferences(nodes) {
+export function storeLibraryNodeReferences(nodes) {
   nodes.forEach(node => {
     if (node.libraryNodeId) return;
     node.libraryNodeId = node._id;
@@ -126,7 +126,7 @@ function storeLibraryNodeReferences(nodes) {
 
 // Covert node references into actual nodes
 // TODO: check permissions for each library a reference node references
-function reifyNodeReferences(nodes, visitedRefs = new Set(), depth = 0) {
+export function reifyNodeReferences(nodes, visitedRefs = new Set(), depth = 0) {
   depth += 1;
   // New nodes added this function
   let newNodes = [];
@@ -159,7 +159,7 @@ function reifyNodeReferences(nodes, visitedRefs = new Set(), depth = 0) {
       ...getFilter.descendants(referencedNode),
       removed: { $ne: true },
     }, {
-      sort: { order: 1 },
+      sort: { left: 1 },
     }).fetch();
 
     // We are adding the referenced node and its descendants

@@ -57,7 +57,6 @@ export default {
   data() { return {
     tabName: 'actions',
   }},
-  // @ts-ignore Meteor isn't defined on vue
   meteor: {
     actions() {
       const folderIds = CreatureProperties.find({
@@ -71,7 +70,7 @@ export default {
 
       return CreatureProperties.find({
         ...getFilter.descendantsOfRoot(this.creatureId),
-        'parent.id': {
+        'parentId': {
           $nin: folderIds,
         },
         type: 'action',

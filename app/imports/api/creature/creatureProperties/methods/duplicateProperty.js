@@ -35,13 +35,13 @@ const duplicateProperty = new ValidatedMethod({
     let property = CreatureProperties.findOne(_id);
     if (!property) throw new Meteor.Error('not-found', 'The source property was not found');
 
-    let creature = getRootCreatureAncestor(property);
+    const creature = getRootCreatureAncestor(property);
 
     assertEditPermission(creature, this.userId);
 
     // Renew the doc ID
-    let randomSrc = DDP.randomStream('duplicateProperty');
-    let propertyId = randomSrc.id();
+    const randomSrc = DDP.randomStream('duplicateProperty');
+    const propertyId = randomSrc.id();
     property._id = propertyId;
 
     // Change the variableName so it isn't immediately overridden
@@ -50,12 +50,12 @@ const duplicateProperty = new ValidatedMethod({
     }
 
     // Get all the descendants
-    let nodes = CreatureProperties.find({
+    const nodes = CreatureProperties.find({
       ...getFilter.descendants(property),
       removed: { $ne: true },
     }, {
       limit: DUPLICATE_CHILDREN_LIMIT + 1,
-      sort: { order: 1 },
+      sort: { left: 1 },
     }).fetch();
 
     // Alert the user if the limit was hit
@@ -70,7 +70,13 @@ const duplicateProperty = new ValidatedMethod({
 
     // Give the docs new IDs without breaking internal references
     const allNodes = [property, ...nodes];
-    renewDocIds({ docArray: allNodes });
+    renewDocIds({
+      docArray: allNodes,
+      idMap: {
+        [_id]: propertyId,
+        [propertyId]: propertyId,
+      },
+    });
 
     // Order the root node
     property.left = Number.MAX_SAFE_INTEGER - 1;

@@ -1,7 +1,7 @@
 <template lang="html">
   <div class="log-content">
     <div
-      v-for="(content, index) in model"
+      v-for="(content, index) in filteredModel"
       :key="index"
       class="content-line"
     >
@@ -36,7 +36,16 @@ export default {
       type: Array,
       default: () => [],
     },
+    showSilenced: {
+      type: Boolean,
+      default: false,
+    },
   },
+  computed: {
+    filteredModel() {
+      return this.model.filter(content => !content.silenced || this.showSilenced);
+    }
+  }
 }
 </script>
 

@@ -4,6 +4,7 @@ import LibraryCollections from '/imports/api/library/LibraryCollections';
 import LibraryNodes from '/imports/api/library/LibraryNodes';
 import { assertViewPermission, assertDocViewPermission } from '/imports/api/sharing/sharingPermissions';
 import { union } from 'lodash';
+import { getFilter } from '/imports/api/parenting/parentingFunctions';
 
 const LIBRARY_NODE_TREE_FIELDS = {
   _id: 1,
@@ -243,7 +244,7 @@ Meteor.publish('libraryNodes', function (libraryId, extraFields) {
       LibraryNodes.find({
         'root.id': libraryId,
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
         fields,
       }),
     ];
@@ -284,11 +285,11 @@ Meteor.publish('softRemovedLibraryNodes', function (libraryId) {
     }
     return [
       LibraryNodes.find({
-        'ancestors.0.id': libraryId,
+        ...getFilter.descendantsOfRoot(libraryId),
         removed: true,
         removedWith: { $exists: false },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       }),
     ];
   });
@@ -296,8 +297,8 @@ Meteor.publish('softRemovedLibraryNodes', function (libraryId) {
 
 Meteor.publish('descendantLibraryNodes', function (nodeId) {
   let node = LibraryNodes.findOne(nodeId);
-  let libraryId = node?.ancestors[0]?.id;
-  if (!libraryId) return [];
+  let libraryId = node?.root.id;
+  if (!libraryId || !node) return [];
   this.autorun(function () {
     let userId = this.userId;
     let library = Libraries.findOne(libraryId);
@@ -307,9 +308,9 @@ Meteor.publish('descendantLibraryNodes', function (nodeId) {
     }
     return [
       LibraryNodes.find({
-        'ancestors.id': nodeId,
+        ...getFilter.descendants(node),
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       }),
     ];
   });

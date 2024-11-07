@@ -34,7 +34,7 @@ export default {
     properties() {
       const props = [];
       CreatureProperties.find({
-        'parent.id': this.model._id,
+        'parentId': this.model._id,
         removed: { $ne: true },
         overridden: { $ne: true },
         $or: [
@@ -54,7 +54,7 @@ export default {
           { hideWhenValueZero: true, value: 0 },
         ],
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       }).forEach(prop => {
         if (propComponents[prop.type]) {
           props.push(prop);

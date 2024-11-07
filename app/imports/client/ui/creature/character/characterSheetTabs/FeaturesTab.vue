@@ -69,14 +69,14 @@ export default {
       
       return CreatureProperties.find({
         ...getFilter.descendantsOfRoot(this.creatureId),
-        'parent.id': {
+        'parentId': {
           $nin: folderIds,
         },
         type: 'feature',
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 }
+        sort: { left: 1 }
       });
     },
   },

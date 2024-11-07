@@ -32,6 +32,11 @@ const ToggleSchema = createPropertySchema({
     type: 'fieldToCompute',
     optional: true,
   },
+  // Prevent the property from showing up in the log
+  silent: {
+    type: Boolean,
+    optional: true,
+  },
 }).extend(TagTargetingSchema);
 
 const ComputedOnlyToggleSchema = createPropertySchema({
@@ -41,7 +46,7 @@ const ComputedOnlyToggleSchema = createPropertySchema({
   },
 });
 
-const ComputedToggleSchema = new SimpleSchema()
+const ComputedToggleSchema = new SimpleSchema({})
   .extend(ComputedOnlyToggleSchema)
   .extend(ToggleSchema);
 

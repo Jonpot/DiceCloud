@@ -78,6 +78,7 @@
 import ToolbarCard from '/imports/client/ui/components/ToolbarCard.vue';
 import SpellList from '/imports/client/ui/properties/components/spells/SpellList.vue';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
+import { getFilter } from '/imports/api/parenting/parentingFunctions';
 
 export default {
   components: {
@@ -99,7 +100,7 @@ export default {
   meteor: {
     spells() {
       let filter = {
-        'ancestors.id': this.model._id,
+        ...getFilter.descendants(this.model),
         type: 'spell',
         removed: { $ne: true },
       };
@@ -118,7 +119,7 @@ export default {
     },
     numPrepared() {
       return CreatureProperties.find({
-        'ancestors.id': this.model._id,
+        ...getFilter.descendants(this.model),
         type: 'spell',
         removed: { $ne: true },
         prepared: true,

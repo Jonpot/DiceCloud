@@ -3,6 +3,7 @@
     :loading="loading"
     :disabled="context.editPermission === false"
     outlined
+    :data-id="`rest-btn-${type}`"
     style="width: 160px;"
     @click="rest"
   >
@@ -14,7 +15,7 @@
 </template>
 
 <script lang="js">
-import restCreature from '/imports/api/creature/creatures/methods/restCreature';
+import doAction from '/imports/client/ui/creature/actions/doAction';
 
 export default {
   inject: {
@@ -36,19 +37,21 @@ export default {
   methods: {
     rest(){
       this.loading = true;
-      restCreature.call({
+      doAction({
         creatureId: this.creatureId,
-        restType: this.type,
-      }, error => {
+        $store: this.$store, 
+        elementId: `rest-btn-${this.type}`, 
+        task: {
+          subtaskFn: 'reset',
+          targetIds: [this.creatureId],
+          eventName: this.type,
+        },
+      }).catch(e => {
+        console.error(e);
+      }).finally(() => {
         this.loading = false;
-        if (error){
-          console.error(error);
-        }
       });
     }
   }
 }
 </script>
-
-<style lang="css" scoped>
-</style>

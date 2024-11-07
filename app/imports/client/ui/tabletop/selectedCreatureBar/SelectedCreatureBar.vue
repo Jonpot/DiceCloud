@@ -4,16 +4,6 @@
     class="selected-creature-bar d-flex pa-3  align-end"
     style="gap: 8px;"
   >
-    <!--
-    <tabletop-buff-icons
-      creature-id="creatureId"
-      @select-icon="selectIcon"
-    />
-    <tabletop-portrait
-      creature-id="creatureId"
-      @select-icon="selectIcon"
-    />
-    -->
     <v-menu
       v-model="menuOpen"
       v-click-outside="{
@@ -29,6 +19,7 @@
       :close-on-click="false"
       :content-class="`tabletop-prop-menu rows-${rows}`"
       :close-on-content-click="false"
+      style="z-index: 2"
     >
       <tabletop-action-card
         v-if="selectedProp && selectedProp.type === 'action'"
@@ -39,10 +30,29 @@
           transition: 'opacity 0.2s ease',
         }"
         :model="selectedProp"
+        data-id="tabletop-action-card"
+        @close-menu="menuOpen = false"
+        @dialog-opened="menuOpen = false"
+        @open-details="openPropertyDetails('tabletop-action-card')"
+      />
+      <tabletop-buff-card
+        v-if="selectedProp && selectedProp.type === 'buff'"
+        style="width: 300px;"
+        :style="{
+          width: '300px',
+          opacity: selectedIcon ? 1 : 0.7,
+          transition: 'opacity 0.2s ease',
+        }"
+        :model="selectedProp"
+        data-id="tabletop-buff-card"
+        @close-menu="menuOpen = false"
+        @dialog-opened="menuOpen = false"
+        @open-details="openPropertyDetails('tabletop-buff-card')"
       />
       <v-card
         v-else-if="activeIcon && activeIcon.tab"
         style="width: 300px"
+        data-id="tabletop-standard-card"
       >
         <v-card-title>
           <v-icon left>
@@ -51,7 +61,31 @@
           {{ activeIcon.tabName }}
         </v-card-title>
       </v-card>
+      <v-card
+        v-else-if="activeIcon && activeIcon.actionName"
+        style="width: 300px"
+      >
+        <v-card-title>
+          <v-icon left>
+            {{ activeIcon.icon }}
+          </v-icon>
+          {{ activeIcon.actionName }}
+        </v-card-title>
+      </v-card>
     </v-menu>
+    <v-card
+      class="delete-card"
+    >
+      <div
+        class="d-flex"
+      >
+        <creature-bar-icon
+          icon="mdi-delete"
+          data-id="trashIcon"
+          @click="$emit('remove')"
+        />
+      </div>
+    </v-card>
     <v-card
       v-if="iconGroups.buffs"
       class="buffs-card"
@@ -125,49 +159,28 @@
         </template>
       </div>
     </v-card>
-    <!--<tabletop-actions
-      creature-id="creatureId"
-      @select-icon="selectIcon"
-    />
-    <tabletop-detail-popover />
-    -->
   </div>
 </template>
 
 <script lang="js">
-import Creatures from '/imports/api/creature/creatures/Creatures.js';
+import Creatures from '/imports/api/creature/creatures/Creatures';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 import TabletopActionCard from '/imports/client/ui/tabletop/TabletopActionCard.vue';
+import TabletopBuffCard from '/imports/client/ui/tabletop/TabletopBuffCard.vue';
 import CreatureBarIcon from '/imports/client/ui/tabletop/selectedCreatureBar/CreatureBarIcon.vue';
-
-//import TabletopPortrait from '/imports/client/ui/tabletop/selectedCreatureBar/TabletopPortrait.vue';
-//import TabletopBuffIcons from '/imports/client/ui/tabletop/selectedCreatureBar/TabletopBuffIcons.vue';
-//import TabletopActions from '/imports/client/ui/tabletop/selectedCreatureBar/TabletopActions.vue';
-//import TabletopGroupedFolders from '/imports/client/ui/tabletop/selectedCreatureBar/TabletopGroupedFolders.vue';
-//import TabletopResources from '/imports/client/ui/tabletop/selectedCreatureBar/TabletopResources.vue';
-//import TabletopCreatureSheetTabs from '/imports/client/ui/tabletop/selectedCreatureBar/TabletopCreatureSheetTabs.vue';
-//import TabletopDetailPopover from '/imports/client/ui/tabletop/selectedCreatureBar/TabletopDetailPopover.vue';
+import { compact, chunk } from 'lodash';
+import doAction from '../../creature/actions/doAction';
 
 function splitToNChunks(inputArray, n) {
-  let result = [];
-  const array = [...inputArray] // Create shallow copy, because splice mutates array
-  for (let i = n; i > 0; i--) {
-      result.push(array.splice(0, Math.ceil(array.length / i)));
-  }
-  return result;
+  return chunk(inputArray, Math.ceil(inputArray.length / n));
 }
 
 export default {
   components: {
-    //TabletopPortrait,
-    //TabletopBuffIcons,
-    //TabletopActions,
-    //TabletopGroupedFolders,
-    //TabletopResources,
-    //TabletopCreatureSheetTabs,
     CreatureBarIcon,
     TabletopActionCard,
-},
+    TabletopBuffCard,
+  },
   props: {
     creatureId: {
       type: String,
@@ -179,6 +192,7 @@ export default {
       rows: 2,
       hoveredIcon: undefined,
       selectedIcon: undefined,
+      lastIcon: undefined,
       menuOpen: false,
       menuX: 200,
       menuY: window.innerHeight - 216,
@@ -195,6 +209,12 @@ export default {
         this.selectedIcon = undefined;
       }
     },
+    selectedIcon: {
+      immediate: true,
+      handler: function ({ propId } = {}) {
+        this.$emit('active-action-change', propId)
+      }
+    }
   },
   methods: {
     log(e) {
@@ -222,6 +242,10 @@ export default {
         this.openCharacterSheet(icon.tab, icon.standardId);
         return;
       }
+      if (icon.actionName) {
+        this.openStandardAction(icon.standardId)
+        return;
+      }
       if (this.selectedIcon === icon) {
         this.selectedIcon = undefined;
         this.menuOpen = false;
@@ -232,17 +256,20 @@ export default {
       this.menuX = x;
       this.selectedIcon = icon;
       this.menuOpen = true;
-    },
+    }, 
     clickOutsideMenu () {
       this.menuOpen = false;
     },
     menuClickOutsideInclude() {
-      return [
+      const outside = compact([
         document.querySelector('.selected-creature-bar'),
-        document.querySelector('.tabletop-prop-menu')
-      ];
+        ...document.querySelectorAll('.tabletop-creature-card'),
+        document.querySelector('.tabletop-prop-menu'),
+      ]);
+      return outside;
     },
     openCharacterSheet(tab, elementId) {
+      this.menuOpen = false;
       this.$store.commit(
         'setTabForCharacterSheet',
         { id: this.creatureId, tab }
@@ -253,7 +280,34 @@ export default {
         data: {
           creatureId: this.creatureId,
         },
-			});
+      });
+    },
+    openStandardAction(standardId) {
+      this.menuOpen = false;
+      if (standardId === 'cast-spell') {
+        doAction({
+          creatureId: this.creatureId,
+          $store: this.$store,
+          elementId: standardId,
+          task: {
+            subtaskFn: 'castSpell',
+            targetIds: [],
+            params: {
+              spellId: undefined,
+            },
+          },
+        });
+      }
+    },
+    openPropertyDetails(elementId) {
+      this.menuOpen = false;
+      const propId = this.selectedProp._id;
+      this.$store.commit('pushDialogStack', {
+        component: 'creature-property-dialog',
+        elementId,
+        data: { _id: propId },
+        callback: () => propId
+      });
     },
   },
   meteor: {
@@ -272,9 +326,9 @@ export default {
 
       // Get the standard icons
       const standardIconsById = {
-        'cast-spell': {standardId: 'cast-spell', groupName: 'Standard Actions', icon: 'mdi-fire' },
-        'make-check': {standardId: 'make-check', groupName: 'Standard Actions', icon: 'mdi-radiobox-marked' },
-        'roll-dice': {standardId: 'roll-dice', groupName: 'Standard Actions', icon: 'mdi-dice-d20' },
+        'cast-spell': {standardId: 'cast-spell', groupName: 'Standard Actions', icon: 'mdi-fire', actionName: 'Cast Spell' },
+        // 'make-check': {standardId: 'make-check', groupName: 'Standard Actions', icon: 'mdi-radiobox-marked',  actionName: 'Check' },
+        // 'roll-dice': {standardId: 'roll-dice', groupName: 'Standard Actions', icon: 'mdi-dice-d20', actionName: 'Roll' },
         'tab-stats': {standardId: 'tab-stats', groupName: 'Tabs', icon: 'mdi-chart-box', tab: 'stats', tabName: 'Stats' },
         'tab-actions': {standardId: 'tab-actions', groupName: 'Tabs', icon: 'mdi-lightning-bolt', tab: 'actions', tabName: 'Actions' },
         'tab-spells': this.creature?.settings?.hideSpellsTab ? undefined : {standardId: 'tab-spells', groupName: 'Tabs', icon: 'mdi-fire', tab: 'spells', tabName: 'Spells' },
@@ -285,28 +339,29 @@ export default {
       };
 
       // Get the folders that could hide a property
-      const folderIds = CreatureProperties.find({
-        'ancestors.id': this.creatureId,
+      const folderGroupsById = {};
+      CreatureProperties.find({
+        'root.id': this.creatureId,
         type: 'folder',
         groupStats: true,
         hideStatsGroup: true,
         removed: { $ne: true },
         inactive: { $ne: true },
-      }, { fields: { _id: 1 } }).map(folder => folder._id);
+      }, { fields: { _id: 1 } }).forEach(folder => {
+        const folderGroup = { name: folder._id, iconList: [] };
+        iconGroups.push(folderGroup);
+        folderGroupsById[folder._id] = folderGroup;
+      });
 
       // Get the properties that need to be shown as an icon
       const filter = {
-        'ancestors.id': this.creatureId,
-        'parent.id': {
-          $nin: folderIds,
-        },
+        'root.id': this.creatureId,
         $and: [
           {
             $or: [
               { type: 'action' },
-              { type: 'folder', groupStats: true },
-              { type: 'attribute' },
-              { type: 'toggle' },
+              // { type: 'attribute' },
+              // { type: 'toggle' },
               { type: 'buff' }
             ],
           },
@@ -327,31 +382,16 @@ export default {
       const propsById = {};
       const props = [];
       CreatureProperties.find(filter, {
-        sort: { order: -1 },
-        fields: { _id: 1, type: 1 },
+        sort: { left: -1 },
+        fields: { _id: 1, type: 1, parentId: 1 },
       }).forEach(prop => {
         props.push(prop);
         propsById[prop._id] = prop;
-      });
-
-      // Using the creature's custom icon groups, collect the props into groups
-      this.creature.tabletopSettings?.iconGroups.forEach(group => {
-        const iconList = [];
-        group.iconIds?.forEach(id => {
-          if (propsById[id]) {
-            const prop = propsById[id];
-            prop._placedInGroup = true;
-            iconList.push({ propId: prop._id });
-          } else if (standardIconsById[id]) {
-            const standardIcon = standardIconsById[id];
-            standardIcon._placedInGroup = true;
-            iconList.push(standardIcon);
-          }
-        });
-        iconGroups.push({
-          name: group.name,
-          iconList,
-        });
+        // If they are in a folder, group them by that folder first
+        if (folderGroupsById[prop.parentId]) {
+          prop._placedInGroup = true;
+          folderGroupsById[prop.parentId].iconList.push({ propId: prop._id });
+        }
       });
 
       // Default groups
@@ -406,7 +446,9 @@ export default {
         iconGroups.buffs.rows = splitToNChunks(iconGroups.buffs.iconList, this.rows);
       }
 
-      return iconGroups;
+      const filteredIconGroups = iconGroups.filter(group => group.iconList.length);
+      filteredIconGroups.buffs = iconGroups.buffs;
+      return filteredIconGroups;
     }
   },
 }

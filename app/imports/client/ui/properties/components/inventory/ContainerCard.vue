@@ -94,14 +94,14 @@ export default {
   meteor: {
     items() {
       return CreatureProperties.find({
-        'parent.id': this.model._id,
+        'parentId': this.model._id,
         type: { $in: ['item', 'container'] },
         removed: { $ne: true },
         equipped: { $ne: true },
         deactivatedByAncestor: { $ne: true },
         deactivatedByToggle: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
     },
   }

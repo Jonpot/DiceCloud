@@ -18,24 +18,6 @@
         <span v-if="model.target === 'self'">to self</span>
       </div>
     </div>
-    <template v-if="showExternalDetails">
-      <div
-        v-for="effect in (model.amount && model.amount.effects)"
-        :key="effect._id"
-      >
-        <div
-          v-if="effect.amount.value !== 0"
-          style="position:relative; top:-15px; left:5px; height:25px;"
-        >
-          <inline-effect
-            :key="effect._id"
-            hide-breadcrumbs
-            :data-id="effect._id"
-            :model="effect"
-          />
-        </div>
-      </div>
-    </template>
   </div>
 </template>
 

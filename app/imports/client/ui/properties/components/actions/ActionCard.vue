@@ -6,19 +6,16 @@
   >
     <div class="layout align-center px-3">
       <div class="avatar">
-        <roll-popup
-          v-if="rollBonus"
+        <v-btn
           icon
           outlined
           style="font-size: 16px; letter-spacing: normal;"
           class="mr-2"
+          :data-id="`${model._id}-do-action-button`"
           :color="model.color || 'primary'"
           :loading="doActionLoading"
           :disabled="model.insufficientResources || !context.editPermission || !!targetingError"
-          :roll-text="rollBonus"
-          :name="model.name"
-          :advantage="model.attackRoll && model.attackRoll.advantage"
-          @roll="doAction"
+          @click.stop="doAction"
         >
           <template v-if="rollBonus && !rollBonusTooLong">
             {{ rollBonus }}
@@ -27,19 +24,6 @@
             v-else
             :model="model"
           />
-        </roll-popup>
-        <v-btn
-          v-else
-          icon
-          outlined
-          style="font-size: 16px; letter-spacing: normal;"
-          class="mr-2"
-          :color="model.color || 'primary'"
-          :loading="doActionLoading"
-          :disabled="model.insufficientResources || !context.editPermission || !!targetingError"
-          @click.stop="doAction"
-        >
-          <property-icon :model="model" />
         </v-btn>
       </div>
       <div
@@ -105,8 +89,8 @@
       <tree-node-list
         v-if="children && children.length"
         start-expanded
-        show-external-details
         :children="children"
+        :root="model.root"
         @selected="e => $emit('sub-click', e)"
       />
     </div>
@@ -116,18 +100,16 @@
 
 <script lang="js">
 import { getPropertyName } from '/imports/constants/PROPERTIES';
-import numberToSignedString from '../../../../../api/utility/numberToSignedString';
-//TODO import doAction from '/imports/api/engine/actions/doAction';
+import numberToSignedString from '/imports/api/utility/numberToSignedString';
+import doAction from '/imports/client/ui/creature/actions/doAction';
 import ActionConditionView from '/imports/client/ui/properties/components/actions/ActionConditionView.vue';
 import AttributeConsumedView from '/imports/client/ui/properties/components/actions/AttributeConsumedView.vue';
 import ItemConsumedView from '/imports/client/ui/properties/components/actions/ItemConsumedView.vue';
 import PropertyIcon from '/imports/client/ui/properties/shared/PropertyIcon.vue';
-import RollPopup from '/imports/client/ui/components/RollPopup.vue';
 import MarkdownText from '/imports/client/ui/components/MarkdownText.vue';
-import { snackbar } from '/imports/client/ui/components/snackbars/SnackbarQueue';
 import CardHighlight from '/imports/client/ui/components/CardHighlight.vue';
 import TreeNodeList from '/imports/client/ui/components/tree/TreeNodeList.vue';
-import { docsToForest as nodeArrayToTree } from '/imports/api/parenting/parentingFunctions';
+import { getFilter, docsToForest as nodeArrayToTree } from '/imports/api/parenting/parentingFunctions';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 import { some } from 'lodash';
 
@@ -138,7 +120,6 @@ export default {
     ItemConsumedView,
     MarkdownText,
     PropertyIcon,
-    RollPopup,
     CardHighlight,
     TreeNodeList,
   },
@@ -210,31 +191,31 @@ export default {
   },
   meteor: {
     children() {
-      const indicesOfTerminatingProps = [];
-      const decendants = CreatureProperties.find({
-        'ancestors.id': this.model._id,
+      const rangesToExclude = [];
+      const descendants = CreatureProperties.find({
+        ...getFilter.descendants(this.model),
         'removed': { $ne: true },
       }, {
-        sort: {order: 1}
+        sort: {left: 1}
       }).map(prop => {
-        // Get all the props we don't want to show the decendants of and
+        // Get all the props we don't want to show the descendants of and
         // where they might appear in the ancestor list
         if (prop.type === 'buff' || prop.type === 'folder') {
-          indicesOfTerminatingProps.push({
-            id: prop._id,
-            ancestorIndex: prop.ancestors.length,
+          rangesToExclude.push({
+            left: prop.left,
+            right: prop.right,
           });
         }
         return prop;
       }).filter(prop => {
         // Filter out folders entirely
         if (prop.type === 'folder') return false;
-        // Filter out decendants of terminating props
-        return !some(indicesOfTerminatingProps, buffIndex => {
-          return prop.ancestors[buffIndex.ancestorIndex]?.id === buffIndex.id;
+        // Filter out descendants of terminating props
+        return !some(rangesToExclude, range => {
+          return prop.left > range.left && prop.right < range.right;
         });
       });
-      return nodeArrayToTree(decendants);
+      return nodeArrayToTree(descendants);
     },
   },
   methods: {
@@ -242,7 +223,17 @@ export default {
       this.$emit('click', e);
     },
     doAction() {
-      doAction(this.model, this.$store, this.model._id);
+      this.doActionLoading = true;
+      doAction({
+        propId: this.model._id,
+        creatureId: this.model.root.id,
+        $store: this.$store,
+        elementId: `${this.model._id}-do-action-button`,
+      }).catch((e) => {
+        console.error(e);
+      }).finally(() => {
+        this.doActionLoading = false;
+      });
     },
   }
 }

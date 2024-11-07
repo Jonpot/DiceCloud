@@ -41,7 +41,8 @@ import Creatures from '/imports/api/creature/creatures/Creatures';
 import CreatureVariables from '/imports/api/creature/creatures/CreatureVariables';
 import { assertEditPermission } from '/imports/api/creature/creatures/creaturePermissions';
 import { parse, prettifyParseError } from '/imports/parser/parser';
-import resolve, { toString } from '/imports/parser/resolve';
+import resolve from '/imports/parser/resolve';
+import toString from '/imports/parser/toString';
 import LogEntry from '/imports/client/ui/log/LogEntry.vue';
 import { Tracker } from 'meteor/tracker'
 
@@ -110,14 +111,14 @@ export default {
       if (this.history.length > 50) this.history.shift();
       this.historyIndex = this.history.length;
     },
-    recalculate() {
+    async recalculate() {
       this.inputHint = this.inputError = undefined;
       if (!this.input) return;
       let result;
       try {
         result = parse(this.input);
       } catch (e){
-        if (e.constructor.name === 'EndOfInputError'){
+        if (e?.constructor?.name === 'EndOfInputError'){
           this.inputError = '...';
         } else {
           let error = prettifyParseError(e);
@@ -126,7 +127,7 @@ export default {
         return;
       }
       try {
-        let {result: compiled} = resolve('compile', result, this.variables);
+        let {result: compiled} = await resolve('compile', result, this.variables);
         this.inputHint = toString(compiled);
         return;
       } catch (e){
@@ -146,7 +147,6 @@ export default {
       }
     }
   },
-  // @ts-ignore
   meteor: {
     logs() {
       const filter = {};
@@ -183,3 +183,4 @@ export default {
     margin-bottom: 0;
   }
 </style>
+resolveimport { toString } from '/imports/parser/toString';

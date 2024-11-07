@@ -23,7 +23,6 @@
       :organize="organize"
       :lazy="lazy"
       :start-expanded="startExpanded"
-      :show-external-details="showExternalDetails"
       @selected="e => $emit('selected', e)"
       @move-within-root="e => $emit('move-within-root', e)"
       @move-between-roots="e => $emit('move-between-roots', e)"
@@ -68,7 +67,6 @@ export default {
       default: () => [],
     },
     startExpanded: Boolean,
-    showExternalDetails: Boolean,
   },
   data() {
     return {

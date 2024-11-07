@@ -2,9 +2,10 @@ import SimpleSchema from 'simpl-schema';
 import { ValidatedMethod } from 'meteor/mdg:validated-method';
 import { RateLimiterMixin } from 'ddp-rate-limiter-mixin';
 import { assertUserInTabletop } from './shared/tabletopPermissions';
-import { assertAdmin } from '/imports/api/sharing/sharingPermissions';
 import { assertUserHasPaidBenefits } from '/imports/api/users/patreon/tiers';
 import Creatures from '/imports/api/creature/creatures/Creatures';
+import Tabletops from '/imports/api/tabletop/Tabletops';
+import { assertTabletopHasPropSpace } from '/imports/api/tabletop/methods/shared/tabletopLimits';
 
 const addCreaturesToTabletop = new ValidatedMethod({
 
@@ -13,14 +14,15 @@ const addCreaturesToTabletop = new ValidatedMethod({
   validate: new SimpleSchema({
     'creatureIds': {
       type: Array,
+      max: 20,
     },
     'creatureIds.$': {
       type: String,
-      regEx: SimpleSchema.RegEx.id,
+      regEx: SimpleSchema.RegEx.Id,
     },
     tabletopId: {
       type: String,
-      regEx: SimpleSchema.RegEx.id,
+      regEx: SimpleSchema.RegEx.Id,
     },
   }).validator(),
 
@@ -36,17 +38,19 @@ const addCreaturesToTabletop = new ValidatedMethod({
         'You need to be logged in to remove a tabletop');
     }
     assertUserHasPaidBenefits(this.userId);
-    assertUserInTabletop(tabletopId, this.userId);
-    assertAdmin(this.userId);
+    const tabletop = Tabletops.findOne(tabletopId);
+    assertUserInTabletop(tabletop, this.userId);
+    assertTabletopHasPropSpace(tabletop);
 
     Creatures.update({
       _id: { $in: creatureIds },
+      // You must have write permission for the creatures you
       $or: [
         { writers: this.userId },
         { owner: this.userId },
       ],
     }, {
-      $set: { tabletop: tabletopId },
+      $set: { tabletopId },
     }, {
       multi: true,
     });

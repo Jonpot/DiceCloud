@@ -27,15 +27,21 @@
 <script lang="js">
 import ProficiencyIcon from '/imports/client/ui/properties/shared/ProficiencyIcon.vue';
 import numberToSignedString from '/imports/api/utility/numberToSignedString';
+import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 
 export default {
   components: {
     ProficiencyIcon,
   },
   props: {
-    model: {
-      type: Object,
+    proficiencyId: {
+      type: String,
       required: true,
+    },
+  },
+  meteor: {
+    model() {
+      return CreatureProperties.findOne(this.proficiencyId);
     },
   },
   computed: {

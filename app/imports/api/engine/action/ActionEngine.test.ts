@@ -3,12 +3,13 @@ import '/imports/api/simpleSchemaConfig.js';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 import { propsFromForest } from '/imports/api/properties/tests/propTestBuilder.testFn';
 import Creatures from '/imports/api/creature/creatures/Creatures';
-import CreatureVariables from '/imports/api/creature/creatures/CreatureVariables';
 import computeCreature from '/imports/api/engine/computeCreature';
 import { loadCreature } from '/imports/api/engine/loadCreatures';
 import EngineActions, { EngineAction } from '/imports/api/engine/action/EngineActions';
-import { applyAction } from '/imports/api/engine/action/functions/applyAction';
+import applyAction from '/imports/api/engine/action/functions/applyAction';
 import { LogContent, Removal, Update } from '/imports/api/engine/action/tasks/TaskResult';
+import inputProvider from './functions/userInput/inputProviderForTests.testFn';
+import { removeAllCreaturesAndProps } from '/imports/api/engine/action/functions/actionEngineTest.testFn';
 
 const creatureId = Random.id();
 const targetId = Random.id();
@@ -18,11 +19,8 @@ describe('Interrupt action system', function () {
   this.timeout(8000);
   before(async function () {
     // Remove old data
-    await Promise.all([
-      CreatureProperties.removeAsync({}),
-      Creatures.removeAsync({}),
-      CreatureVariables.removeAsync({}),
-    ]);
+    await removeAllCreaturesAndProps();
+
     // Add creatures
     await Promise.all([
       Creatures.insertAsync({
@@ -30,12 +28,22 @@ describe('Interrupt action system', function () {
         name: 'action test creature',
         owner: Random.id(),
         dirty: true,
+        type: 'pc',
+        readers: [],
+        writers: [],
+        public: false,
+        settings: {},
       }),
       Creatures.insertAsync({
         _id: targetId,
         name: 'action test creature',
         owner: Random.id(),
         dirty: true,
+        type: 'pc',
+        readers: [],
+        writers: [],
+        public: false,
+        settings: {},
       })
     ]);
     // Add test props
@@ -81,11 +89,12 @@ describe('Interrupt action system', function () {
       [{ value: 'child 2 of index branch' }]
     );
   });
-  it('Halts execution of choice branches', async function () {
-    let userInputRequested = false;
-    const requestUserInput = () => { userInputRequested = true; return 0 };
-    await runActionById(choiceBranchId, requestUserInput);
-    assert.isTrue(userInputRequested, 'User input should be requested when a choice branch is applied');
+  it('Gets choices from choice branches', async function () {
+    const action = await runActionById(choiceBranchId);
+    assert.deepEqual(
+      allLogContent(action),
+      [{ value: 'child 1 of choice branch' }]
+    );
   });
   it('Applies adjustments', async function () {
     let action = await runActionById(adjustmentSetId);
@@ -116,7 +125,6 @@ describe('Interrupt action system', function () {
         name: 'New Roll',
         value: '7d1 [1, 1, 1, 1, 1, 1, 1] + 9\n**16**',
         inline: true,
-        silenced: undefined,
       }, {
         value: 'rollVar: 16'
       }
@@ -197,20 +205,22 @@ describe('Interrupt action system', function () {
 function createAction(prop, targetIds?) {
   const action: EngineAction = {
     creatureId: prop.root.id,
-    rootPropId: prop._id,
     results: [],
     taskCount: 0,
-    targetIds,
+    task: {
+      prop,
+      targetIds,
+    }
   };
   return EngineActions.insertAsync(action);
 }
 
-async function runActionById(propId, userInputFn = () => 0) {
+async function runActionById(propId) {
   const prop = await CreatureProperties.findOneAsync(propId);
   const actionId = await createAction(prop);
   const action = await EngineActions.findOneAsync(actionId);
   if (!action) throw 'Action is expected to exist';
-  await applyAction(action, userInputFn, { simulate: true });
+  await applyAction(action, inputProvider, { simulate: true });
   return action;
 }
 
@@ -264,7 +274,7 @@ function allLogContent(action: EngineAction) {
 
 let note1Id, folderId, ifTruthyBranchId, ifFalsyBranchId, indexBranchId, choiceBranchId,
   adjustedStatId, adjustmentIncrementId, adjustmentSetId, rollId, buffId,
-  removeParentBuffId, removeTaggedBuffsId, removeOneTaggedBuffId, taggedBuffId, secondTaggedBuffId, buffAttChildId;
+  removeParentBuffId, removeTaggedBuffsId, removeOneTaggedBuffId, taggedBuffId, secondTaggedBuffId;
 
 const propForest = [
   // Apply a simple note
@@ -361,7 +371,7 @@ const propForest = [
     target: 'self',
     children: [
       {
-        _id: buffAttChildId = Random.id(),
+        _id: Random.id(),
         type: 'attribute',
         attributeType: 'stat',
         variableName: 'buffStat',

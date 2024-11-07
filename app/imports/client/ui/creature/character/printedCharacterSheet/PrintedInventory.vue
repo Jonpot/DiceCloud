@@ -102,7 +102,6 @@ export default {
       organize: false,
     }
   },
-  // @ts-ignore Meteor isn't defined on vue
   meteor: {
     containers() {
       return CreatureProperties.find({
@@ -111,7 +110,7 @@ export default {
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
     },
     creature() {
@@ -128,22 +127,22 @@ export default {
     containersWithoutAncestorContainers() {
       return CreatureProperties.find({
         ...getFilter.descendantsOfRoot(this.creatureId),
-        $not: getFilter.descendantsOfAll(this.containers),
+        $nor: [getFilter.descendantsOfAll(this.containers)],
         type: 'container',
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       }).map(c => {
         c.items = CreatureProperties.find({
-          'parent.id': c._id,
+          'parentId': c._id,
           type: { $in: ['item', 'container'] },
           removed: { $ne: true },
           equipped: { $ne: true },
           deactivatedByAncestor: { $ne: true },
           deactivatedByToggle: { $ne: true },
         }, {
-          sort: { order: 1 },
+          sort: { left: 1 },
         }).fetch();
         return c;
       });
@@ -151,14 +150,14 @@ export default {
     carriedItems() {
       return CreatureProperties.find({
         ...getFilter.descendantsOfRoot(this.creatureId),
-        $not: getFilter.descendantsOfAll(this.containers),
+        $nor: [getFilter.descendantsOfAll(this.containers)],
         type: 'item',
         equipped: { $ne: true },
         removed: { $ne: true },
         deactivatedByAncestor: { $ne: true },
         deactivatedByToggle: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
     },
     equippedItems() {
@@ -169,7 +168,7 @@ export default {
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
     },
     equipmentParentRef() {

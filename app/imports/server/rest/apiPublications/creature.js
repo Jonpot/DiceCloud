@@ -4,6 +4,7 @@ import { assertViewPermission } from '/imports/api/creature/creatures/creaturePe
 import computeCreature from '/imports/api/engine/computeCreature';
 import VERSION from '/imports/constants/VERSION';
 import { getCreature, getProperties, getVariables } from '/imports/api/engine/loadCreatures';
+import SCHEMA_VERSION from '/imports/constants/SCHEMA_VERSION';
 
 JsonRoutes.add('get', 'api/creature/:id', function (req, res) {
   const creatureId = req.params.id;
@@ -46,6 +47,9 @@ JsonRoutes.add('get', 'api/creature/:id', function (req, res) {
   // Send the results
   JsonRoutes.sendResult(res, {
     data: {
+      meta: {
+        schemaVersion: SCHEMA_VERSION,
+      },
       creatures: [creature],
       creatureProperties: getProperties(creatureId),
       creatureVariables: getVariables(creatureId),
@@ -53,50 +57,3 @@ JsonRoutes.add('get', 'api/creature/:id', function (req, res) {
   });
 
 });
-
-/*
-Meteor.publish('api-creature', function (creatureId) {
-  try {
-    new SimpleSchema({
-      creatureId: {
-        type: String,
-        regEx: SimpleSchema.RegEx.Id,
-      },
-    }).validate({ creatureId });
-  } catch (e) {
-    console.error(e)
-    this.error(e);
-    return;
-  }
-  const userId = this.userId;
-  const creatureCursor = Creatures.find({
-    _id: creatureId,
-  });
-  const creature = creatureCursor.fetch()[0];
-  try {
-    assertViewPermission(creature, userId)
-  } catch (e) {
-    console.error(e)
-    this.error(e);
-    return;
-  }
-  if (creature.computeVersion !== VERSION) {
-    try {
-      computeCreature(creatureId)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-  return [
-    creatureCursor,
-    CreatureProperties.find({
-      'ancestors.id': creatureId,
-    }),
-    CreatureVariables.find({
-      _creatureId: creatureId,
-    }),
-  ];
-}, {
-  url: 'api/creature/:0'
-});
-*/

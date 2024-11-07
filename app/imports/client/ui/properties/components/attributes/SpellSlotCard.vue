@@ -22,6 +22,7 @@
         color="accent"
         style="width: 100%;"
         outlined
+        data-id="cast-spell-btn"
         @click="castSpell"
       >
         Cast a spell
@@ -32,7 +33,7 @@
 
 <script lang="js">
 import SpellSlotListTile from '/imports/client/ui/properties/components/attributes/SpellSlotListTile.vue';
-import doCastSpell from '/imports/api/engine/actions/doCastSpell';
+import doAction from '/imports/client/ui/creature/actions/doAction';
 import { snackbar } from '/imports/client/ui/components/snackbars/SnackbarQueue';
 
 export default {
@@ -50,38 +51,31 @@ export default {
       default: () => [],
     },
   },
+  data(){return {
+    castSpellLoading: false,
+  }},
   methods: {
     castSpell() {
-      this.$store.commit('pushDialogStack', {
-        component: 'cast-spell-with-slot-dialog',
-        elementId: 'spell-slot-card',
-        data: {
-          creatureId: this.creatureId,
-        },
-        callback({ spellId, slotId, advantage, ritual } = {}) {
-          if (!spellId) return;
-          doCastSpell.call({
-            spellId,
-            slotId,
-            ritual,
-            scope: {
-              '~attackAdvantage': { value: advantage },
-            },
-          }, error => {
-            if (!error) return;
-            snackbar({ text: error.reason || error.message || error.toString() });
-            console.error(error);
-          });
-        },
+      this.castSpellLoading = true;
+      doAction({
+        creatureId: this.model.root.id,
+        propId: this.model._id,
+        $store: this.$store, 
+        elementId: `spell-slot-card-${this.model._id}`
+      }).catch(error => {
+        snackbar({ text: error.reason || error.message || error.toString() });
+        console.error(error);
+      }).finally(() => {
+        this.castSpellLoading = false;
       });
     },
     clickProperty({ _id }) {
       this.$store.commit('pushDialogStack', {
         component: 'creature-property-dialog',
-        elementId: `spell-slot-card-${_id}`,
+        elementId: 'cast-spell-btn',
         data: { _id },
       });
     },
   }
 }
-</script>../../../../../api/engine/action/methods/doCastSpell
+</script>

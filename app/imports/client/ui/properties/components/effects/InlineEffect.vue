@@ -33,14 +33,20 @@
 
 <script lang="js">
   import getEffectIcon from '/imports/client/ui/utility/getEffectIcon';
-  import { isFinite } from 'lodash';
+import { isFinite } from 'lodash';
+  import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 
   export default {
     props: {
       hideBreadcrumbs: Boolean,
-      model: {
-        type: Object,
+      effectId: {
+        type: String,
         required: true,
+      },
+    },
+    meteor: {
+      model() {
+        return CreatureProperties.findOne(this.effectId);
       },
     },
     computed: {

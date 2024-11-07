@@ -1,7 +1,7 @@
 {
   "name": "dicecloud",
-  "version": "2.0.59",
-  "description": "Unofficial Online Realtime D&D 5e App",
+  "version": "2.1.0",
+  "description": "Online Realtime TTRPG Engine",
   "license": "GPL-3.0",
   "repository": {
     "type": "git",
@@ -9,10 +9,13 @@
   },
   "author": "Thaum Rystra",
   "scripts": {
-    "run": "meteor",
+    "serve": "meteor run --raw-logs --settings settings.json",
     "debug": "meteor --inspect",
     "bundle-viz": "meteor --extra-packages bundle-visualizer --production",
-    "test": "meteor test --driver-package meteortesting:mocha --port 3001",
+    "lint": "eslint .",
+    "test": "meteor test --driver-package meteortesting:mocha --port 3001 --raw-logs",
+    "test:coverage": "COVERAGE=1 COVERAGE_OUT_LCOVONLY=1 COVERAGE_OUT_REMAP=1 COVERAGE_APP_FOLDER=$PWD/ meteor test --once --raw-logs --driver-package meteortesting:mocha",
+    "test:watch:coverage": "COVERAGE=1 COVERAGE_OUT_LCOVONLY=1 COVERAGE_OUT_REMAP=1 COVERAGE_APP_FOLDER=$PWD/ TEST_WATCH=1 meteor test --raw-logs --driver-package meteortesting:mocha",
     "build": "meteor build ../build --architecture os.linux.x86_64"
   },
   "engines": {
@@ -20,11 +23,11 @@
     "npm": "6.13.x"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.523.0",
     "@babel/runtime": "^7.23.9",
     "@chenfengyuan/vue-countdown": "^1.1.5",
     "@tozd/vue-observer-utils": "^0.5.0",
-    "@types/meteor": "^2.9.8",
-    "aws-sdk": "^2.1559.0",
+    "alea": "^1.0.1",
     "bcrypt": "^5.1.1",
     "chroma-js": "^2.4.2",
     "css-box-shadow": "^1.0.0-3",
@@ -53,19 +56,24 @@
     "simpl-schema": "^1.13.1",
     "source-map-support": "^0.5.21",
     "speakingurl": "^14.0.1",
-    "three": "^0.156.1",
+    "thumbhash": "^0.1.1",
     "vivagraphjs": "^0.12.0",
-    "vue": "2.6.10",
+    "vue": "2.6.14",
     "vue-meteor-tracker": "^2.0.0",
     "vue-reactive-provide": "^0.3.0",
     "vue-router": "^3.6.5",
     "vuedraggable": "^2.23.2",
-    "vuetify": "^2.7.2",
+    "vuetify": "2.6.15",
     "vuetify-upload-button": "^2.0.2",
     "vuex": "^3.1.3"
   },
   "devDependencies": {
+    "@types/chai": "^4.3.11",
+    "@types/lodash": "^4.14.202",
+    "@types/meteor": "^2.9.8",
+    "@types/meteor-mdg-validated-method": "^1.2.10",
     "@types/mocha": "^10.0.6",
+    "@types/simpl-schema": "^1.12.7",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vue/compiler-dom": "^3.4.19",
@@ -125,7 +133,8 @@
         "error",
         "single"
       ],
-      "@typescript-eslint/no-this-alias": "off"
+      "@typescript-eslint/no-this-alias": "off",
+      "@typescript-eslint/no-explicit-any": "off"
     }
   }
 }

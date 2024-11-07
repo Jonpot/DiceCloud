@@ -1,6 +1,7 @@
 <template lang="html">
   <v-list-item
     :key="model._id"
+    :data-id="`spell-slot-list-tile-${model._id}`"
     class="spell-slot-list-tile"
     v-bind="$attrs"
     v-on="hasClickListener ? {click} : {}"
@@ -64,9 +65,10 @@
 </template>
 
 <script lang="js">
-import damageProperty from '/imports/api/creature/creatureProperties/methods/damageProperty';
 import numberToSignedString from '/imports/api/utility/numberToSignedString';
 import { snackbar } from '/imports/client/ui/components/snackbars/SnackbarQueue';
+import doAction from '/imports/client/ui/creature/actions/doAction';
+import getPropertyTitle from '/imports/client/ui/properties/shared/getPropertyTitle';
 
 export default {
   inject: {
@@ -90,21 +92,30 @@ export default {
       this.$emit('click', e);
     },
     disabled(i) {
-      if (!this.context.editPermission) return true;
-      // Use these if only the next filled or empty slot can be clicked
-      // if (this.model.value ===  i) return false;
-      // if (this.model.value === i - 1) return false;
-      // return true
-      return false;
+      return !this.context.editPermission;
     },
-    damageProperty({type, value, ack}) {
-      damageProperty.call({
-        _id: this.model._id,
-        operation: type,
-        value: value
-      }, error => {
-        if (ack) ack(error);
-        if (error) {
+    damageProperty({ type, value, ack }) {
+      const model = this.model;
+      doAction({
+        creatureId: model.root.id,
+        $store: this.$store,
+        elementId: `spell-slot-list-tile-${model._id}`,
+        task: {
+        subtaskFn: 'damageProp',
+        prop: model,
+        targetIds: [model.root.id],
+        params: {
+          title: getPropertyTitle(model),
+          operation: type,
+          value,
+          targetProp: model,
+        }
+      }}).then(() =>{
+        ack?.();
+      }).catch((error) => {
+        if (ack) {
+          ack(error);
+        } else  {
           snackbar({ text: error.reason || error.message || error.toString() });
           console.error(error);
         }

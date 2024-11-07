@@ -31,9 +31,9 @@
             'justify-end': end,
             'flex-wrap': wrap,
             'mono': isMono,
-            'flex-grow-0': calculation && calculation.effects,
-            'flex-grow-1': !calculation || !calculation.effects,
-            'ma-3': calculation && calculation.effects,
+            'flex-grow-0': hasEffectsOrProficiencies,
+            'flex-grow-1': !hasEffectsOrProficiencies, 
+            'ma-3': hasEffectsOrProficiencies,
             ...$attrs.class,
           }"
           style="overflow-x: auto;"
@@ -49,35 +49,31 @@
           </slot>
         </div>
         <div
-          v-if="calculation && (calculation.effects || calculation.proficiencies)"
+          v-if="hasEffectsOrProficiencies"
           class="flex-grow-1"
           style="max-width: 100%;"
         >
           <inline-effect
-            v-if="typeof calculation.value === 'number' && calculation.baseValue !== 0"
-            hide-breadcrumbs
-            :model="{
-              name: 'Base value',
-              operation: 'base',
-              amount: {value: calculation.baseValue},
-            }"
-            @click="clickEffect(effect._id)"
-          />
-          <inline-effect
-            v-for="effect in calculation.effects"
-            :key="effect._id"
-            :data-id="effect._id"
-            :model="effect"
-            @click="clickEffect(effect._id)"
+            v-for="effectId in calculation.effectIds"
+            :key="effectId"
+            :data-id="effectId"
+            :effect-id="effectId"
+            @click="clickEffect(effectId)"
           />
           <inline-proficiency
-            v-for="proficiency in calculation.proficiencies"
-            :key="proficiency._id"
-            :data-id="proficiency._id"
-            :model="proficiency"
-            :proficiency-bonus="calculation.proficiencyBonus"
-            @click="clickEffect(proficiency._id)"
+            v-for="proficiencyId in calculation.proficiencyIds"
+            :key="proficiencyId"
+            :data-id="proficiencyId"
+            :proficiency-id="proficiencyId"
+            @click="clickEffect(proficiencyId)"
           />
+        </div>
+        <div
+          v-if="hasEffectsOrProficiencies"
+          class="d-flex justify-end border-t-sm pt-2"
+          style="width: 100%; opacity: 0.5"
+        >
+          {{ calculation.value }}
         </div>
       </div>
     </fieldset>
@@ -152,6 +148,9 @@ export default {
       if (this.signed) {
         return numberToSignedString(calculation.value);
       }
+      if (this.hasEffectsOrProficiencies) {
+        return calculation.unaffected;
+      }
       return calculation.value;
     },
     // large and center are only applied to calculations if we are showing their
@@ -171,6 +170,15 @@ export default {
       if (this.showCalculationInsteadOfValue) return true;
       if (this.valueNotReduced) return true;
       return this.mono;
+    },
+    hasEffects(){
+      return this.calculation?.effectIds?.length > 0;
+    },
+    hasProficiencies(){
+      return this.calculation?.proficiencyIds?.length > 0;
+    },
+    hasEffectsOrProficiencies() {
+      return this.hasEffects || this.hasProficiencies;
     },
   },
   methods: {

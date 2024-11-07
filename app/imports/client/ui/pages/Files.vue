@@ -10,19 +10,7 @@
       <v-col cols="12">
         <v-subheader> Archived Characters </v-subheader>
       </v-col>
-      <template v-if="archiveFiles && archiveFiles.length">
-        <v-col
-          v-for="file in archiveFiles"
-          :key="file._id"
-          cols="12"
-          sm="6"
-          md="4"
-          lg="3"
-          xl="2"
-        >
-          <archive-file-card :model="file" />
-        </v-col>
-      </template>
+      
       <v-col
         key="upload"
         cols="12"
@@ -63,8 +51,50 @@
           />
         </v-btn>
       </v-col>
+      <template v-if="archiveFiles && archiveFiles.length">
+        <v-col
+          v-for="file in archiveFiles"
+          :key="file._id"
+          cols="12"
+          sm="6"
+          md="4"
+          lg="3"
+          xl="2"
+        >
+          <archive-file-card :model="file" />
+        </v-col>
+      </template>
     </v-row>
-    <!--
+    <v-row dense>
+      <v-col cols="12">
+        <v-subheader> Images </v-subheader>
+      </v-col>
+      <v-col
+        cols="12"
+        sm="6"
+        md="4"
+        lg="3"
+        xl="2"
+      >
+        <image-upload-input
+          style="height: 100%; width: 100%; min-height: 120px;"
+        />
+      </v-col>
+      <template v-if="imageFiles && imageFiles.length">
+        <v-col
+          v-for="file in imageFiles"
+          :key="file._id"
+          cols="12"
+          sm="6"
+          md="4"
+          lg="3"
+          xl="2"
+        >
+          <user-image-card :model="file" />
+        </v-col>
+      </template>
+    </v-row>
+      <!--
     <v-row dense>
       <v-col cols="12">
         <v-subheader> Images </v-subheader>
@@ -95,27 +125,34 @@
       </v-col>
     </v-row>
     -->
+    </v-col>
   </v-container>
 </template>
 
 <script lang="js">
 import ArchiveCreatureFiles from '/imports/api/creature/archive/ArchiveCreatureFiles';
-import UserImages from '/imports/api/files/UserImages';
+import UserImages from '/imports/api/files/userImages/UserImages';
 import prettyBytes from 'pretty-bytes';
 import ArchiveFileCard from '/imports/client/ui/files/ArchiveFileCard.vue';
 import FileStorageStats from '/imports/client/ui/files/FileStorageStats.vue';
 import ImageUploadInput from '/imports/client/ui/components/ImageUploadInput.vue';
-import UserImageCard from '/imports/client/ui/files/UserImageCard.vue';
+import UserImageCard from '/imports/client/ui/files/userImages/UserImageCard.vue';
 import { snackbar } from '/imports/client/ui/components/snackbars/SnackbarQueue';
 import { archiveSchema } from '/imports/api/creature/archive/ArchiveCreatureFiles';
 import migrateArchive from '/imports/migrations/archive/migrateArchive';
+import ImageField from '/imports/client/ui/properties/viewers/shared/ImageField.vue';
+import SmartImageInput from '/imports/client/ui/components/global/SmartImageInput.vue';
+
+// TODO Mark files that don't have versions.${version}.meta.pipePath set as broken links
+// TODO show user images
+// TODO delete, rename, etc. user images
 
 export default {
   components: {
     ArchiveFileCard,
     FileStorageStats,
-    ImageUploadInput,
     UserImageCard,
+    ImageUploadInput,
   },
   data(){ return {
     updateStorageUsedLoading: false,
@@ -124,12 +161,13 @@ export default {
     archiveUploadInProgress: false,
     archiveUploadProgress: 0,
     archiveUploadIndeterminate: true,
+    inputImageHref: 'https://picsum.photos/2000/500',
   }},
   meteor: {
     $subscribe: {
       'archiveCreatureFiles': [],
-      'characterList': [],
       'userImages': [],
+      'characterList': [],
     },
     archiveFiles() {
       const userId = Meteor.userId();
@@ -145,20 +183,24 @@ export default {
         return f;
       });
     },
-    userImages() {
+    imageFiles() {
       const userId = Meteor.userId();
-      return UserImages.find({
-        userId
-      }, {
-        sort: {
-          size: -1
-        },
-      }).map(f => {
+      return UserImages.find(
+        {
+          userId,
+        }, {
+          sort: {
+            'meta.createdAt': -1,
+            'name': 1,
+            'size': -1,
+          },
+        }
+      ).map(f => {
         f.size = prettyBytes(f.size);
         f.link = UserImages.link(f);
         return f;
       });
-    }
+    },
   },
   watch: {
     archiveUploadInProgress(val){
@@ -226,18 +268,14 @@ export default {
 
         // These are the event functions, don't need most of them, it shows where we are in the process
         uploadInstance.on('start', function () {
-          console.log('Starting');
           self.archiveUploadIndeterminate = false;
         });
 
         uploadInstance.on('end', function (error, fileObj) {
-          console.log('On end File Object: ', fileObj);
           self.archiveUploadInProgress = false;
         });
 
         uploadInstance.on('uploaded', function (error, fileObj) {
-          console.log('uploaded: ', fileObj);
-
           // Remove the file from the input box
           self.file = undefined;
 
@@ -246,7 +284,6 @@ export default {
         });
 
         uploadInstance.on('error', function (error, fileObj) {
-          console.log('Error during upload: ' + error, fileObj)
           const text = error.reason || error.message || error;
           snackbar({text});
           self.archiveFileError = text;
@@ -254,12 +291,10 @@ export default {
         });
 
         uploadInstance.on('progress', function (progress, fileObj) {
-          console.log('Upload Percentage: ' + progress, fileObj)
-          // Update our progress bar
           self.archiveUploadProgress = progress;
         });
 
-        uploadInstance.start(); // Must manually start the upload
+        uploadInstance.start();
       });
 
       fr.readAsText(file);

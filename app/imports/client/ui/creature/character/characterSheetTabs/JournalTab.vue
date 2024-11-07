@@ -83,14 +83,14 @@ export default {
       };
       const allNotes = CreatureProperties.find(noteFilter, {
         sort: { left: 1 },
-      });
+      }).fetch();
       
       return CreatureProperties.find({
         ...noteFilter,
         ...getFilter.descendantsOfRoot(this.creatureId),
-        $not: getFilter.descendantsOfAll(allNotes),
+        $nor: [getFilter.descendantsOfAll(allNotes)],
       }, {
-        sort: {order: 1},
+        sort: {left: 1},
       });
     },
     creature(){

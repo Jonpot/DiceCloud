@@ -1,4 +1,4 @@
-import INLINE_CALCULATION_REGEX from '/imports/constants/INLINE_CALCULTION_REGEX';
+import INLINE_CALCULATION_REGEX from '/imports/constants/INLINE_CALCULATION_REGEX';
 import { prettifyParseError, parse } from '/imports/parser/parser';
 import applyFnToKey from '/imports/api/engine/computation/utility/applyFnToKey';
 import { get, set, unset } from 'lodash';
@@ -103,7 +103,7 @@ function subDocsExist(prop, key) {
 
 export function removeEmptyCalculations(prop) {
   prop._computationDetails.emptyCalculations.forEach(calcObj => {
-    if (!calcObj.effects?.length) {
+    if (!calcObj.effectIds?.length && !calcObj.proficiencyIds?.length) {
       unset(prop, calcObj._key);
     }
   });
@@ -125,6 +125,6 @@ function parseCalculation(calcObj) {
       message: prettifyParseError(e),
     };
     calcObj.parseError = error;
-    calcObj.parseNode = errorNode.create({ error });
+    calcObj.parseNode = errorNode.create({ error: error.message });
   }
 }

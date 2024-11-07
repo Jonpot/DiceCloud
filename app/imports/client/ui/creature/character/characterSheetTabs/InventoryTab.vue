@@ -156,14 +156,14 @@ export default {
     containers() {
       return CreatureProperties.find({
         ...getFilter.descendantsOfRoot(this.creatureId),
-        'parent.id': {
+        'parend': {
           $nin: this.folderIds,
         },
         type: 'container',
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       }).fetch();
     },
     creature() {
@@ -180,7 +180,7 @@ export default {
     containersWithoutAncestorContainers() {
       return CreatureProperties.find({
         ...getFilter.descendantsOfRoot(this.creatureId),
-        $not: getFilter.descendantsOfAll(this.containers),
+        $nor: [getFilter.descendantsOfAll(this.containers)],
         parentId: {
           $nin: this.folderIds,
         },
@@ -188,13 +188,13 @@ export default {
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
     },
     carriedItems() {
       return CreatureProperties.find({
         ...getFilter.descendantsOfRoot(this.creatureId),
-        $not: getFilter.descendantsOfAll(this.containers),
+        $nor: [getFilter.descendantsOfAll(this.containers)],
         parentId: {
           $nin: this.folderIds,
         },
@@ -204,7 +204,7 @@ export default {
         deactivatedByAncestor: { $ne: true },
         deactivatedByToggle: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
     },
     equippedItems() {
@@ -215,7 +215,7 @@ export default {
         removed: { $ne: true },
         inactive: { $ne: true },
       }, {
-        sort: { order: 1 },
+        sort: { left: 1 },
       });
     },
     equipmentParentRef() {

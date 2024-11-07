@@ -3,62 +3,24 @@
     class="action-card  overflow-y-auto"
     rounded
     :class="cardClasses"
-    :data-id="model._id"
   >
     <div class="layout align-center px-3">
       <div
         class="avatar"
-        :style="{ opacity: active ? '' : '0.5'}"
       >
-        <roll-popup
-          v-if="rollBonus"
-          :icon="!active"
-          :outlined="!active"
-          :fab="active"
-          style="letter-spacing: normal;"
-          class="mr-2"
-          :no-click="!active"
-          :style="{
-            fontSize: active ? '24px' : '16px'
-          }"
-          :large="active"
-          :color="model.color || 'primary'"
-          :loading="doActionLoading"
-          :disabled="model.insufficientResources || !context.editPermission || !!targetingError"
-          :roll-text="rollBonus"
-          :name="model.name"
-          :advantage="model.attackRoll && model.attackRoll.advantage"
-          @roll="doAction"
-        >
-          <template v-if="rollBonus && !rollBonusTooLong">
-            {{ rollBonus }}
-          </template>
-          <property-icon
-            v-else
-            :model="model"
-          />
-        </roll-popup>
         <v-btn
-          v-else
-          :icon="!active"
-          :outlined="!active"
-          :fab="active"
+          icon
+          outlined
           style="letter-spacing: normal;"
           class="mr-2"
           :style="{
-            fontSize: active ? '24px' : '16px'
+            fontSize: '24px'
           }"
-          :large="active"
+          data-id="do-action-button"
           :color="model.color || 'primary'"
           :loading="doActionLoading"
-          :disabled="model.insufficientResources || !context.editPermission || !!targetingError"
-          v-on="active ? {
-            click: e => {
-              if (!active) return;
-              e.stopPropagation();
-              doAction({});
-            }
-          } : {}"
+          :disabled="model.insufficientResources || !context.editPermission"
+          @click="doAction"
         >
           <template v-if="rollBonus && !rollBonusTooLong">
             {{ rollBonus }}
@@ -72,9 +34,7 @@
       <div
         class="action-header flex layout column justify-center pl-1"
         style="height: 72px; cursor: pointer;"
-        @mouseover="() => { if (active) hovering = true }"
-        @mouseleave="() => { if (active) hovering = false }"
-        @click="(e) => { if (active) { $emit('deactivate'); e.stopPropagation() } }"
+        @click="$emit('open-details')"
       >
         <div class="action-title my-1">
           {{ model.name || propertyName }}
@@ -96,14 +56,6 @@
           </template>
         </div>
       </div>
-      <v-btn
-        v-if="active"
-        icon
-        class="flex-grow-0"
-        @click.stop="openPropertyDetails(model._id)"
-      >
-        <v-icon>mdi-window-restore</v-icon>
-      </v-btn>
     </div>
     <div class="px-3 pb-3">
       <template
@@ -124,47 +76,39 @@
           :action="model"
         />
         <v-divider
-          v-if="active && model.summary"
+          v-if="model.summary"
           class="my-2"
         />
       </template>
-      <template v-if="active && model.summary">
+      <template v-if=" model.summary">
         <markdown-text :markdown="model.summary.value || model.summary.text" />
       </template>
-      <v-divider v-if="active && children && children.length" />
+      <v-divider v-if="children && children.length" />
       <tree-node-list
-        v-if="active && children && children.length"
+        v-if="children && children.length"
         start-expanded
         :children="children"
+        :root="model.root"
         @selected="e => $emit('sub-click', e)"
       />
     </div>
-    <card-highlight :active="hovering" />
-    <div
-      style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; cursor: pointer"
-      :style="{pointerEvents: active ? 'none' : ''}"
-      @mouseover="() => { if (!active) hovering = true }"
-      @mouseleave="hovering = false"
-      @click="() => { if (!active) $emit('activate') }"
-    />
   </v-sheet>
 </template>
 
 <script lang="js">
 import { getPropertyName } from '/imports/constants/PROPERTIES.js';
 import numberToSignedString from '/imports/api/utility/numberToSignedString.js';
-//TODO import doAction from '/imports/api/engine/actions/doAction.js';
+import doAction from '/imports/client/ui/creature/actions/doAction';
 import AttributeConsumedView from '/imports/client/ui/properties/components/actions/AttributeConsumedView.vue';
 import ItemConsumedView from '/imports/client/ui/properties/components/actions/ItemConsumedView.vue';
 import PropertyIcon from '/imports/client/ui/properties/shared/PropertyIcon.vue';
-import RollPopup from '/imports/client/ui/components/RollPopup.vue';
 import MarkdownText from '/imports/client/ui/components/MarkdownText.vue';
 import { snackbar } from '/imports/client/ui/components/snackbars/SnackbarQueue.js';
-import CardHighlight from '/imports/client/ui/components/CardHighlight.vue';
 import TreeNodeList from '/imports/client/ui/components/tree/TreeNodeList.vue';
 import { docsToForest } from '/imports/api/parenting/parentingFunctions';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 import { some } from 'lodash';
+import { getFilter } from '/imports/api/parenting/parentingFunctions';
 
 export default {
   components: {
@@ -172,8 +116,6 @@ export default {
     ItemConsumedView,
     MarkdownText,
     PropertyIcon,
-    RollPopup,
-    CardHighlight,
     TreeNodeList,
   },
   inject: {
@@ -195,7 +137,6 @@ export default {
       type: Array,
       default: undefined,
     },
-    active: Boolean,
   },
   data() {
     return {
@@ -243,19 +184,19 @@ export default {
   },
   meteor: {
     children() {
-      const indicesOfTerminatingProps = [];
+      const excludedRanges = [];
       const decendants = CreatureProperties.find({
-        'ancestors.id': this.model._id,
+        ...getFilter.descendants(this.model),
         'removed': { $ne: true },
       }, {
-        sort: {order: 1}
+        sort: {left: 1}
       }).map(prop => {
         // Get all the props we don't want to show the decendants of and
         // where they might appear in the ancestor list
         if (prop.type === 'buff' || prop.type === 'folder') {
-          indicesOfTerminatingProps.push({
-            id: prop._id,
-            ancestorIndex: prop.ancestors.length,
+          excludedRanges.push({
+            left: prop.left,
+            right: prop.right,
           });
         }
         return prop;
@@ -263,8 +204,8 @@ export default {
         // Filter out folders entirely
         if (prop.type === 'folder') return false;
         // Filter out decendants of terminating props
-        return !some(indicesOfTerminatingProps, buffIndex => {
-          return prop.ancestors[buffIndex.ancestorIndex]?.id === buffIndex.id;
+        return !some(excludedRanges, range => {
+          return prop.left > range.left && prop.right < range.right;
         });
       });
       return docsToForest(decendants);
@@ -274,22 +215,19 @@ export default {
     click(e) {
       this.$emit('click', e);
     },
-    doAction({ advantage }) {
+    doAction() {
       this.doActionLoading = true;
-      this.shwing();
-      doAction.call({
-        actionId: this.model._id,
-        targetIds: this.targets,
-        scope: {
-          $attackAdvantage: advantage,
-        }
-      }, error => {
+      this.$emit('close-menu')
+      doAction({
+        propId: this.model._id,
+        creatureId: this.model.root.id,
+        $store: this.$store,
+        elementId: 'do-action-button',
+      }).catch((e) => {
+        console.error(e);
+        snackbar({ text: e.message || e.reason || e.toString() });
+      }).finally(() => {
         this.doActionLoading = false;
-        this.$emit('deactivate');
-        if (error) {
-          console.error(error);
-          snackbar({ text: error.reason });
-        }
       });
     },
     shwing() {
@@ -297,13 +235,6 @@ export default {
       setTimeout(() => {
         this.activated = undefined;
       }, 150);
-    },
-    openPropertyDetails() {
-      this.$store.commit('pushDialogStack', {
-        component: 'creature-property-dialog',
-        elementId: `${this.model._id}`,
-        data: {_id: this.model._id},
-      });
     },
   }
 }

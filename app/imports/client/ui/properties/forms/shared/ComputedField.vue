@@ -46,12 +46,11 @@ export default {
       return true;
     },
     displayedValue() {
-      let value = this.model.value;
-      // Use the base value instead if the calculation has it, because effects can modify the value
-      if (this.model.baseValue !== undefined) {
-        value = this.model.baseValue;
+      // Use the unaffected value instead if the calculation has it, because effects can modify the value
+      if (this.model.unaffected !== undefined) {
+        return this.model.unaffected;
       }
-      return value;
+      return this.model.value;
     },
     errorList(){
       if (this.model.parseError){

@@ -3,9 +3,9 @@ import { assert } from 'chai';
 import computeCreatureComputation from '../../computeCreatureComputation';
 import clean from '../../utility/cleanProp.testFn';
 
-export default function () {
+export default async function () {
   const computation = buildComputationFromProps(testProperties);
-  computeCreatureComputation(computation);
+  await computeCreatureComputation(computation);
 
   const prop = computation.propsById['actionId'];
   assert.equal(prop.summary.value, 'test summary 3 without referencing anything 7');
@@ -57,7 +57,7 @@ var testProperties = [
       }],
     },
     uses: {
-      calculation: 'nonExistantProperty + 7',
+      calculation: 'nonExistentProperty + 7',
     },
     usesUsed: 5,
     left: 1,

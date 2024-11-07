@@ -5,23 +5,20 @@
     @mouseover="$emit('mouseover')"
     @mouseleave="$emit('mouseleave')"
   >
-    <roll-popup
+    <v-btn
       v-if="model.attributeType === 'modifier' || model.type === 'skill'"
-      button-class="px-0"
+      class="px-0"
       text
       height="70"
       min-width="72"
-      :roll-text="computedValue && computedValue.toString()"
-      :name="model.name"
-      :advantage="model.advantage"
       :loading="checkLoading"
       :disabled="!context.editPermission"
-      @roll="check"
+      @click.stop="check"
     >
       <v-card-title class="value text-h4 flex-shrink-0">
         {{ computedValue }}
       </v-card-title>
-    </roll-popup>
+    </v-btn>
     <v-card-title
       v-else
       class="value text-h4 flex-shrink-0"
@@ -47,15 +44,11 @@
 </template>
 
 <script lang="js">
-import numberToSignedString from '../../../../../api/utility/numberToSignedString';
-import RollPopup from '/imports/client/ui/components/RollPopup.vue';
-import doCheck from '/imports/api/engine/actions/doCheck';
 import {snackbar} from '/imports/client/ui/components/snackbars/SnackbarQueue';
+import numberToSignedString from '/imports/api/utility/numberToSignedString';
+import doAction from '/imports/client/ui/creature/actions/doAction';
 
 export default {
-  components: {
-    RollPopup,
-  },
   inject: {
     context: {
       default: {},
@@ -82,19 +75,26 @@ export default {
   },
   methods: {
     signed: numberToSignedString,
-    check({advantage}){
+    check(){
       this.checkLoading = true;
-      doCheck.call({
-        propId: this.model._id,
-        scope: {
-          '~checkAdvantage': { value: advantage },
+      doAction({
+        creatureId: this.model.root.id,
+        $store: this.$store, 
+        elementId: `check-btn-${this.model._id}`, 
+        task: {
+          subtaskFn: 'check',
+          prop: this.model,
+          targetIds: [this.model.root.id],
+          advantage: this.model.advantage,
+          skillVariableName: this.model.variableName,
+          abilityVariableName: this.model.ability,
+          dc: null,
         },
-      }, error => {
+      }).catch(error => {
+        snackbar({ text: error.reason || error.message || error.toString() });
+        console.error(error);
+      }).finally(() => {
         this.checkLoading = false;
-        if (error){
-          console.error(error);
-          snackbar({text: error.reason});
-        }
       });
     },
   },
@@ -106,4 +106,4 @@ export default {
     min-width: 72px;
     justify-content: center;
   }
-</style>../../../../../api/engine/action/methods/doCheck
+</style>

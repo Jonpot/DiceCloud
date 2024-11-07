@@ -1,10 +1,11 @@
+import Context from '../../../../parser/types/Context';
+
 /**
  * The result of running a task containing all the changes that need to be made to the listed
  * targets
  * Each mutation may apply to a different subset of targets
  */
 export default class TaskResult {
-  propId: string;
   // The targets of the original task
   targetIds: string[];
   scope: any;
@@ -19,14 +20,19 @@ export default class TaskResult {
   // properties can be found on variable.previous
   pushScope?: any;
   mutations: Mutation[];
-  constructor(propId: string, targetIds: string[]) {
-    this.propId = propId;
+  constructor(targetIds: string[]) {
     this.targetIds = targetIds;
     this.mutations = [];
     this.scope = {};
   }
   // Appends the log content to the latest mutation
-  appendLog(content: LogContent, targetIds: string[]) {
+  appendLog(content: LogContent & { silenced: boolean }, targetIds: string[]) {
+    // Create a shallow copy of the content
+    const logContent: LogContent = { ...content };
+    // remove false silenced properties
+    if (!logContent.silenced) {
+      delete logContent.silenced;
+    }
     if (!this.mutations.length) {
       this.mutations.push({ targetIds, contents: [] });
     }
@@ -34,7 +40,23 @@ export default class TaskResult {
     if (!latestMutation.contents) {
       latestMutation.contents = [];
     }
-    latestMutation.contents.push(content);
+    latestMutation.contents.push(logContent);
+  }
+  appendParserContextErrors(context: Context, targetIds) {
+    if (!context.errors?.length) return;
+    if (!this.mutations.length) {
+      this.mutations.push({ targetIds, contents: [] });
+    }
+    const latestMutation = this.mutations[this.mutations.length - 1]
+    if (!latestMutation.contents) {
+      latestMutation.contents = [];
+    }
+    context.errors?.forEach(error => {
+      latestMutation.contents?.push({
+        name: 'Error',
+        value: error.message,
+      });
+    });
   }
 }
 

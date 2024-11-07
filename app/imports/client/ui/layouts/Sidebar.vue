@@ -57,6 +57,7 @@
       <v-divider />
     </v-list>
     <creature-folder-list
+      v-if="signedIn"
       dense
       :creatures="CreaturesWithNoParty"
       :folders="folders"
@@ -80,7 +81,6 @@ export default {
   components: {
     CreatureFolderList
   },
-  // @ts-ignore
   meteor: {
     $subscribe: {
       'characterList': [],
@@ -98,12 +98,12 @@ export default {
         { title: 'Home', icon: 'mdi-home', to: '/' },
         { title: 'Characters', icon: 'mdi-account-group', to: '/character-list', requireLogin: true },
         { title: 'Library', icon: 'mdi-library-shelves', to: '/library', requireLogin: true },
-        {title: 'Tabletops', icon: 'mdi-table-furniture', to: '/tabletops', requireLogin: true},
-        {title: 'Friends', icon: 'mdi-account-multiple', to: '/friends', requireLogin: true},
-        { title: 'Files', icon: 'mdi-file-multiple', to: '/my-files' },
+        { title: 'Tabletops', icon: 'mdi-table-furniture', to: '/tabletops', requireLogin: true },
+        //{ title: 'Friends', icon: 'mdi-account-multiple', to: '/friends', requireLogin: true },
+        { title: 'Files', icon: 'mdi-file-multiple', to: '/my-files', requireLogin: true, },
+        { title: 'Documentation', icon: 'mdi-book-open-variant', to: '/docs' },
         { title: 'Feedback', icon: 'mdi-bug', to: '/feedback' },
         { title: 'About', icon: 'mdi-sign-text', to: '/about' },
-        { title: 'Documentation', icon: 'mdi-book-open-variant', to: '/docs' },
         { title: 'Patreon', icon: 'mdi-patreon', href: 'https://www.patreon.com/dicecloud' },
         { title: 'Github', icon: 'mdi-github', href: 'https://github.com/ThaumRystra/DiceCloud/' },
       ];
@@ -113,7 +113,7 @@ export default {
       const userId = Meteor.userId();
       let folders = CreatureFolders.find(
         { owner: userId, archived: { $ne: true } },
-        { sort: { order: 1 } },
+        { sort: { name: 1 } },
       ).map(folder => {
         folder.creatures = Creatures.find(
           {

@@ -9,6 +9,10 @@
         {{ model.name }}
       </v-toolbar-title>
       <v-spacer />
+      <property-icon
+        :model="model"
+        :color="model.color"
+      />
     </template>
     <v-card-text v-if="summaryText">
       <property-description
@@ -22,11 +26,13 @@
 <script lang="js">
 import ToolbarCard from '/imports/client/ui/components/ToolbarCard.vue';
 import PropertyDescription from '/imports/client/ui/properties/viewers/shared/PropertyDescription.vue'
+import PropertyIcon from '/imports/client/ui/properties/shared/PropertyIcon.vue';
 
 export default {
   components: {
     ToolbarCard,
     PropertyDescription,
+    PropertyIcon,
   },
   props: {
     model: {

@@ -39,7 +39,6 @@
         <tree-node-view
           :model="node"
           :selected="selected"
-          :show-external-details="showExternalDetails"
         />
       </div>
     </div>
@@ -58,7 +57,6 @@
             :organize="organize"
             :selected-node="selectedNode"
             :start-expanded="startExpanded"
-            :show-external-details="showExternalDetails"
             @move-within-root="e => $emit('move-within-root', e)"
             @move-between-roots="e => $emit('move-between-roots', e)"
             @selected="e => $emit('selected', e)"
@@ -117,7 +115,6 @@ export default {
     },
     selected: Boolean,
     startExpanded: Boolean,
-    showExternalDetails: Boolean,
   },
   data() {
     return {
@@ -149,8 +146,7 @@ export default {
   },
   watch: {
     'node._ancestorOfMatchedDocument'(value) {
-      this.expanded = !!value ||
-        some(this.selectedNode?.ancestors, ref => ref.id === this.node._id);
+      this.expanded = !!value || isAncestor(this.node, this.selectedNode);
     },
     'selectedNode.parentId'() {
       this.expanded = isAncestor(this.node, this.selectedNode) || this.expanded;

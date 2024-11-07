@@ -1,6 +1,6 @@
 import { EngineAction } from '/imports/api/engine/action/EngineActions';
 import {
-  applyDefaultAfterPropTasks, applyTriggers
+  applyDefaultAfterPropTasks, applyAfterTasksSkipChildren, applyTriggers
 } from '/imports/api/engine/action/functions/applyTaskGroups';
 import {
   getEffectiveActionScope
@@ -22,7 +22,11 @@ export default async function applyItemAsAmmoTask(task: ItemAsAmmoTask, action: 
   result.pushScope = { ['~ammoConsumed']: { value } };
 
   // Apply the before triggers
-  await applyTriggers(action, item, [action.creatureId], 'ammo.before', userInput);
+  await applyTriggers(action, item, task.targetIds, 'ammoTriggerIds.before', userInput);
+
+  // Create a new result after before triggers have run
+  result = new TaskResult(task.targetIds);
+  action.results.push(result);
 
   // Refetch the scope properties
   const scope = await getEffectiveActionScope(action);
@@ -31,7 +35,7 @@ export default async function applyItemAsAmmoTask(task: ItemAsAmmoTask, action: 
   };
   value = scope['~ammoConsumed']?.value || 0;
 
-  const itemChildren = await getPropertyChildren(action.creatureId, item);
+  const itemChildren = task.params.skipChildren ? [] : await getPropertyChildren(action.creatureId, item);
 
   // Do the quantity adjustment
   // Check if property has quantity
@@ -43,13 +47,21 @@ export default async function applyItemAsAmmoTask(task: ItemAsAmmoTask, action: 
       type: 'item',
     }],
     // Log the item name as a heading if it has child properties to apply
-    contents: itemChildren.length ? [{
-      name: getPropertyTitle(item) || 'Ammo',
-      inline: false,
-      silenced: prop.silent,
-    }] : undefined,
+    ...itemChildren.length && !task.params.skipChildren && {
+      contents: [{
+        name: getPropertyTitle(item) || 'Ammo',
+        inline: false,
+        ...prop?.silent && { silenced: true },
+      }]
+    },
   });
 
-  await applyTriggers(action, item, [action.creatureId], 'ammo.after', userInput);
-  return applyDefaultAfterPropTasks(action, item, task.targetIds, userInput);
+  await applyTriggers(action, item, task.targetIds, 'ammoTriggerIds.after', userInput);
+
+  if (task.params.skipChildren) {
+    await applyAfterTasksSkipChildren(action, item, task.targetIds, userInput);
+  } else {
+    await applyDefaultAfterPropTasks(action, item, task.targetIds, userInput);
+  }
+  return applyTriggers(action, item, task.targetIds, 'ammoTriggerIds.afterChildren', userInput);
 }

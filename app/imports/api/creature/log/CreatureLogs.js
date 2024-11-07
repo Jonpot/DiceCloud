@@ -6,9 +6,9 @@ import { ValidatedMethod } from 'meteor/mdg:validated-method';
 import { RateLimiterMixin } from 'ddp-rate-limiter-mixin';
 import { assertEditPermission } from '/imports/api/creature/creatures/creaturePermissions';
 import { parse, prettifyParseError } from '/imports/parser/parser';
-import resolve, { toString } from '/imports/parser/resolve';
+import resolve from '/imports/parser/resolve';
+import toString from '/imports/parser/toString';
 import STORAGE_LIMITS from '/imports/constants/STORAGE_LIMITS';
-import { assertUserInTabletop } from '/imports/api/tabletop/methods/shared/tabletopPermissions.js';
 
 const PER_CREATURE_LOG_LIMIT = 100;
 
@@ -38,16 +38,16 @@ let CreatureLogSchema = new SimpleSchema({
     },
     index: 1,
   },
+  // The acting creature initiating the logged events
   creatureId: {
     type: String,
-    regEx: SimpleSchema.RegEx.Id,
     index: 1,
   },
+  // The tabletops this log is associated with
   tabletopId: {
     type: String,
-    regEx: SimpleSchema.RegEx.Id,
-    index: 1,
     optional: true,
+    index: 1,
   },
   creatureName: {
     type: String,
@@ -58,11 +58,17 @@ let CreatureLogSchema = new SimpleSchema({
 
 CreatureLogs.attachSchema(CreatureLogSchema);
 
-function removeOldLogs(creatureId) {
+function removeOldLogs({ creatureId, tabletopId }) {
+  let filter;
+  if (creatureId && tabletopId || (!creatureId && !tabletopId)) {
+    throw Error('Provide either creatureId or tabletopId')
+  } else if (creatureId) {
+    filter = { creatureId };
+  } else if (tabletopId) {
+    filter = { tabletopId }
+  }
   // Find the first log that is over the limit
-  let firstExpiredLog = CreatureLogs.find({
-    creatureId
-  }, {
+  let firstExpiredLog = CreatureLogs.find(filter, {
     sort: { date: -1 },
     skip: PER_CREATURE_LOG_LIMIT,
   });
@@ -136,7 +142,7 @@ const insertCreatureLog = new ValidatedMethod({
   },
 });
 
-export function insertCreatureLogWork({ log, creature, tabletopId, method }) {
+export function insertCreatureLogWork({ log, creature, method }) {
   // Build the new log
   if (typeof log === 'string') {
     log = { content: [{ value: log }] };
@@ -150,19 +156,18 @@ export function insertCreatureLogWork({ log, creature, tabletopId, method }) {
     }
   });
   log.date = new Date();
-  if (tabletopId) log.tabletopId = tabletopId;
   if (creature && creature.tabletop) log.tabletopId = creature.tabletop;
   // Insert it
   let id = CreatureLogs.insert(log);
   if (Meteor.isServer) {
     method?.unblock();
     if (creature) {
-      removeOldLogs(creature._id);
       logWebhook({ log, creature });
     }
     if (log.tabletopId) {
-      // Todo remove old tabletop logs
-      // Log webhook if it's different to creature webhook
+      removeOldLogs({ tabletopId: log.tabletopId });
+    } else {
+      removeOldLogs({ creatureId: creature._id });
     }
   }
   return id;
@@ -185,20 +190,15 @@ const logRoll = new ValidatedMethod({
     roll: {
       type: String,
     },
-    tabletopId: {
-      type: String,
-      regEx: SimpleSchema.RegEx.Id,
-      optional: true,
-    },
     creatureId: {
       type: String,
       regEx: SimpleSchema.RegEx.Id,
       optional: true,
     },
   }).validator(),
-  run({ roll, tabletopId, creatureId }) {
-    if (!creatureId && !tabletopId) throw new Meteor.Error('no-id',
-      'A creature id or tabletop id must be given'
+  async run({ roll, creatureId }) {
+    if (!creatureId) throw new Meteor.Error('no-id',
+      'A creature id must be given'
     );
     let creature;
     if (creatureId) {
@@ -214,9 +214,6 @@ const logRoll = new ValidatedMethod({
       });
       assertEditPermission(creature, this.userId);
     }
-    if (tabletopId) {
-      assertUserInTabletop(tabletopId, this.userId);
-    }
     const variables = CreatureVariables.findOne({ _creatureId: creatureId }) || {};
     let logContent = []
     let parsedResult = undefined;
@@ -230,7 +227,7 @@ const logRoll = new ValidatedMethod({
       let {
         result: compiled,
         context
-      } = resolve('compile', parsedResult, variables);
+      } = await resolve('compile', parsedResult, variables);
       const compiledString = toString(compiled);
       if (!equalIgnoringWhitespace(compiledString, roll)) logContent.push({
         value: roll
@@ -238,12 +235,12 @@ const logRoll = new ValidatedMethod({
       logContent.push({
         value: compiledString
       });
-      let { result: rolled } = resolve('roll', compiled, variables, context);
+      let { result: rolled } = await resolve('roll', compiled, variables, context);
       let rolledString = toString(rolled);
       if (rolledString !== compiledString) logContent.push({
         value: rolledString
       });
-      let { result } = resolve('reduce', rolled, variables, context);
+      let { result } = await resolve('reduce', rolled, variables, context);
       let resultString = toString(result);
       if (resultString !== rolledString) logContent.push({
         value: resultString
@@ -258,7 +255,7 @@ const logRoll = new ValidatedMethod({
       date: new Date(),
     };
 
-    let id = insertCreatureLogWork({ log, creature, tabletopId, method: this });
+    let id = insertCreatureLogWork({ log, creature, method: this });
 
     return id;
   },

@@ -119,14 +119,13 @@
 
 <script lang="js">
 import propertyViewerMixin from '/imports/client/ui/properties/viewers/shared/propertyViewerMixin';
-//TODO import doAction from '/imports/api/engine/actions/doAction';
 import ActionConditionView from '/imports/client/ui/properties/components/actions/ActionConditionView.vue';
 import AttributeConsumedView from '/imports/client/ui/properties/components/actions/AttributeConsumedView.vue';
 import ItemConsumedView from '/imports/client/ui/properties/components/actions/ItemConsumedView.vue';
 import PropertyIcon from '/imports/client/ui/properties/shared/PropertyIcon.vue';
 import updateCreatureProperty from '/imports/api/creature/creatureProperties/methods/updateCreatureProperty';
-import doCastSpell from '/imports/api/engine/actions/doCastSpell';
 import { snackbar } from '/imports/client/ui/components/snackbars/SnackbarQueue';
+import doAction from '/imports/client/ui/creature/actions/doAction';
 
 export default {
   components: {
@@ -187,50 +186,19 @@ export default {
     },
   },
   methods: {
-    
     doAction() {
-      this.$store.commit('pushDialogStack', {
-        component: 'action-dialog',
+      this.doActionLoading = true;
+      doAction({
+        creatureId: this.model.root.id,
+        $store: this.$store,
+        propId: this.model._id,
         elementId: 'do-action-button',
-        data: {
-          propId: this.model._id,
-        },
+      }).catch((e) => {
+        console.error(e);
+        snackbar({ text: e.message || e.reason || e.toString() });
+      }).finally(() => {
+        this.doActionLoading = false;
       });
-      return;
-      if (this.model.type === 'action') {
-        this.doActionLoading = true;
-        doAction.call({ actionId: this.model._id }, error => {
-          this.doActionLoading = false;
-          if (error) {
-            snackbar({ text: error.reason });
-            console.error(error);
-          }
-        });
-      } else if (this.model.type === 'spell') {
-        this.$store.commit('pushDialogStack', {
-          component: 'cast-spell-with-slot-dialog',
-          elementId: 'do-action-button',
-          data: {
-            creatureId: this.context.creatureId,
-            spellId: this.model._id,
-          },
-          callback({ spellId, slotId, advantage, ritual } = {}) {
-            if (!spellId) return;
-            doCastSpell.call({
-              spellId,
-              slotId,
-              ritual,
-              scope: {
-                '~attackAdvantage': { value: advantage },
-              },
-            }, error => {
-              if (!error) return;
-              snackbar({ text: error.reason });
-              console.error(error);
-            });
-          },
-        });
-      }
     },
     resetUses() {
       updateCreatureProperty.call({
@@ -254,4 +222,3 @@ export default {
   height: 40px;
 }
 </style>
-../../../../api/engine/action/methods/doCastSpell

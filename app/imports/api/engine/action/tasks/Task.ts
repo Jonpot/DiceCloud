@@ -1,17 +1,27 @@
-type Task = PropTask | DamagePropTask | ItemAsAmmoTask;
+import { CheckParams } from '/imports/api/engine/action/functions/userInput/InputProvider';
+
+type Task = PropTask | DamagePropTask | ItemAsAmmoTask | CheckTask | ResetTask | CastSpellTask;
 
 export default Task;
 
-interface BaseTask {
-  prop: { [key: string]: any };
+type BaseTask = {
   targetIds: string[];
+  silent?: boolean | undefined;
 }
 
-export interface PropTask extends BaseTask {
-  subtaskFn?: undefined,
+type Prop = {
+  _id: string;
+  type: string;
+  [key: string]: any,
 }
 
-export interface DamagePropTask extends BaseTask {
+export type PropTask = BaseTask & {
+  prop: Prop;
+  subtaskFn?: undefined;
+  silent?: undefined;
+}
+
+export type DamagePropTask = BaseTask & {
   subtaskFn: 'damageProp';
   params: {
     /**
@@ -20,14 +30,37 @@ export interface DamagePropTask extends BaseTask {
     title?: string;
     operation: 'increment' | 'set';
     value: number;
-    targetProp: any;
+    targetProp: Prop;
   };
 }
 
-export interface ItemAsAmmoTask extends BaseTask {
+export type ItemAsAmmoTask = BaseTask & {
   subtaskFn: 'consumeItemAsAmmo';
+  prop: Prop;
+  silent?: undefined;
   params: {
     value: number;
     item: any;
+    skipChildren: boolean;
+  };
+}
+
+export type CheckTask = BaseTask & CheckParams & {
+  subtaskFn: 'check';
+}
+
+export type ResetTask = BaseTask & {
+  subtaskFn: 'reset';
+  eventName: string;
+  // One and only one target
+  targetIds: [string];
+}
+
+export type CastSpellTask = BaseTask & {
+  prop?: Prop | undefined;
+  silent?: undefined;
+  subtaskFn: 'castSpell';
+  params: {
+    spellId: string | undefined;
   };
 }

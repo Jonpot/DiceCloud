@@ -2,7 +2,6 @@ import SimpleSchema from 'simpl-schema';
 import { ValidatedMethod } from 'meteor/mdg:validated-method';
 import { RateLimiterMixin } from 'ddp-rate-limiter-mixin';
 import Tabletops from '../Tabletops';
-import { assertAdmin } from '/imports/api/sharing/sharingPermissions';
 import { assertUserHasPaidBenefits } from '/imports/api/users/patreon/tiers';
 import { assertUserIsTabletopOwner } from './shared/tabletopPermissions';
 import Creatures from '/imports/api/creature/creatures/Creatures';
@@ -14,11 +13,12 @@ const removeTabletop = new ValidatedMethod({
   validate: new SimpleSchema({
     tabletopId: {
       type: String,
-      regEx: SimpleSchema.RegEx.id,
+      regEx: SimpleSchema.RegEx.Id,
     },
   }).validator(),
 
   mixins: [RateLimiterMixin],
+  // @ts-expect-error Rate limit not defined
   rateLimit: {
     numRequests: 5,
     timeInterval: 5000,
@@ -31,7 +31,6 @@ const removeTabletop = new ValidatedMethod({
     }
     assertUserHasPaidBenefits(this.userId);
     assertUserIsTabletopOwner(tabletopId, this.userId);
-    assertAdmin(this.userId);
 
     let removed = Tabletops.remove({
       _id: tabletopId,

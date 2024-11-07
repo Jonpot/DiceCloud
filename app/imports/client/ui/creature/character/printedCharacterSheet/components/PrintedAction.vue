@@ -4,11 +4,6 @@
     :class="cardClasses"
   >
     <div class="d-flex align-center mb-2">
-      <div class="roll-bonus">
-        <template v-if="!onHitDamage && rollBonus">
-          {{ rollBonus }}
-        </template>
-      </div>
       <div class="action-title text-center flex-grow-1">
         {{ model.name || propertyName }}
       </div>
@@ -51,28 +46,21 @@
         <markdown-text :markdown="model.summary.value || model.summary.text" />
       </template>
       <div
-        v-if="onHitDamage"
+        v-if="rollBonus"
+        class="roll-bonus"
       >
-        <span class="damage">
+        <span class="to-hit ml-2">
           {{ rollBonus }}
         </span>
         <span>
           to hit
         </span>
       </div>
-      <div v-if="onHitDamage">
-        <span class="damage">
-          {{ onHitDamage.damage }}
-        </span>
-        <span>
-          {{ onHitDamage.suffix }}
-        </span>
-      </div>
       <tree-node-list
-        v-else-if="children && children.length"
+        v-if="children && children.length"
         start-expanded
-        show-external-details
         :children="children"
+        :root="{id: model._id, collection: 'creatureProperties'}"
         @selected="e => $emit('sub-click', e)"
       />
     </div>
@@ -88,7 +76,7 @@ import numberToSignedString from '/imports/api/utility/numberToSignedString';
 import PropertyIcon from '/imports/client/ui/properties/shared/PropertyIcon.vue';
 import MarkdownText from '/imports/client/ui/components/MarkdownText.vue';
 import TreeNodeList from '/imports/client/ui/components/tree/TreeNodeList.vue';
-import { docsToForest as nodeArrayToTree } from '/imports/api/parenting/parentingFunctions';
+import { getFilter, docsToForest as nodeArrayToTree } from '/imports/api/parenting/parentingFunctions';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 import { some } from 'lodash';
 
@@ -151,50 +139,34 @@ export default {
         'long': 'Long Action'
       }[this.model.actionType] || this.model.actionType
     },
-    onHitDamage() {
-      /**
-       * Only match a property who has exactly one to-hit child with one damage under that
-       */
-      if (this.children?.length !== 1) return;
-      if (this.children[0]?.node?.type !== 'branch') return;
-      if (this.children[0].children?.length !== 1) return;
-      if (this.children[0].children[0]?.node?.type !== 'damage') return;
-      if (this.children[0].children[0].children?.length !== 0) return;
-      const damage = this.children[0].children[0]?.node;
-      return {
-        damage: damage.value,
-        suffix: damage.damageType + (damage.damageType !== 'healing' ? ' damage ' : '')
-      };
-    },
   },
   meteor: {
     children() {
-      throw 'TODO: rewrite with nested sets'
-      const indicesOfTerminatingProps = [];
-      const decendants = CreatureProperties.find({
-        'ancestors.id': this.model._id,
+      const rangesToExclude = [];
+      const descendants = CreatureProperties.find({
+        ...getFilter.descendants(this.model),
         'removed': { $ne: true },
       }, {
-        sort: {order: 1}
+        sort: {left: 1}
       }).map(prop => {
-        // Get all the props we don't want to show the decendants of and
+        // Get all the props we don't want to show the descendants of and
         // where they might appear in the ancestor list
         if (prop.type === 'buff' || prop.type === 'folder') {
-          indicesOfTerminatingProps.push({
-            id: prop._id,
-            ancestorIndex: prop.ancestors.length,
+          rangesToExclude.push({
+            left: prop.left,
+            right: prop.right,
           });
         }
         return prop;
       }).filter(prop => {
         // Filter out folders entirely
         if (prop.type === 'folder') return false;
-        // Filter out decendants of terminating props
-        return !some(indicesOfTerminatingProps, buffIndex => {
-          return prop.ancestors[buffIndex.ancestorIndex]?.id === buffIndex.id;
+        // Filter out descendants of terminating props
+        return !some(rangesToExclude, range => {
+          return prop.left > range.left && prop.right < range.right;
         });
       });
-      return nodeArrayToTree(decendants);
+      return nodeArrayToTree(descendants);
     },
   },
 }
@@ -206,6 +178,10 @@ export default {
     transform 0.075s ease;
 }
 .roll-bonus {
+  color: rgba(0, 0, 0, 0.87);
+}
+.to-hit {
+  color: rgba(0, 0, 0, 0.54);
   font-size: 18pt;
   flex-basis: 24px;
 }

@@ -1,105 +1,114 @@
-// TODO
+import { getFromScope } from '/imports/api/creature/creatures/CreatureVariables';
+import { EngineAction } from '/imports/api/engine/action/EngineActions';
+import InputProvider from '/imports/api/engine/action/functions/userInput/InputProvider';
+import { applyDefaultAfterPropTasks, applyTaskToEachTarget } from '/imports/api/engine/action/functions/applyTaskGroups';
+import getPropertyTitle from '/imports/api/utility/getPropertyTitle';
+import recalculateCalculation from '/imports/api/engine/action/functions/recalculateCalculation';
+import { PropTask } from '/imports/api/engine/action/tasks/Task';
+import TaskResult from '/imports/api/engine/action/tasks/TaskResult';
+import { getVariables } from '/imports/api/engine/loadCreatures';
+import numberToSignedString from '/imports/api/utility/numberToSignedString';
+import { isFiniteNode } from '/imports/parser/parseTree/constant';
 
-export default function applySavingThrow(node, actionContext) {
-  applyNodeTriggers(node, 'before', actionContext);
-  const prop = node.doc
-  const originalTargets = actionContext.targets;
+export default async function applySavingThrowProperty(
+  task: PropTask, action: EngineAction, result: TaskResult, inputProvider: InputProvider
+): Promise<void> {
 
-  let saveTargets = prop.target === 'self' ? [actionContext.creature] : actionContext.targets;
+  const prop = task.prop;
 
-  recalculateCalculation(prop.dc, actionContext);
+  const saveTargetIds = prop.target === 'self' ? [action.creatureId] : task.targetIds;
 
-  const dc = (prop.dc?.value);
-  if (!isFinite(dc)) {
-    actionContext.addLog({
+  if (saveTargetIds.length > 1) {
+    return applyTaskToEachTarget(action, task, saveTargetIds, inputProvider);
+  }
+
+  recalculateCalculation(prop.dc, action, 'reduce', inputProvider);
+
+  if (!isFiniteNode(prop.dc?.valueNode)) {
+    result.appendLog({
       name: 'Error',
       value: 'Saving throw requires a DC',
-    });
-    return node.children.forEach(child => applyProperty(child, actionContext));
+      silenced: prop.silent,
+    }, saveTargetIds);
+    return applyDefaultAfterPropTasks(action, prop, saveTargetIds, inputProvider);
   }
-  if (!prop.silent) actionContext.addLog({
-    name: prop.name,
+
+  const dc = (prop.dc?.value);
+  result.appendLog({
+    name: getPropertyTitle(prop),
     value: `DC **${dc}**`,
     inline: true,
-  });
-  const scope = actionContext.scope;
+    silenced: prop.silent,
+  }, saveTargetIds);
+
+  const targetId = saveTargetIds[0];
 
   // If there are no save targets, apply all children as if the save both
-  // succeeeded and failed
-  if (!saveTargets?.length) {
-    scope['~saveFailed'] = { value: true };
-    scope['~saveSucceeded'] = { value: true };
-    return applyChildren(node, actionContext);
+  // succeeded and failed
+  if (!targetId) {
+    result.pushScope = {
+      ['~saveFailed']: { value: true },
+      ['~saveSucceeded']: { value: true },
+    }
+    return applyDefaultAfterPropTasks(action, prop, saveTargetIds, inputProvider);
   }
 
   // Each target makes the saving throw
-  saveTargets.forEach(target => {
-    delete scope['~saveFailed'];
-    delete scope['~saveSucceeded'];
-    delete scope['~saveDiceRoll'];
-    delete scope['~saveRoll'];
+  const save = getFromScope(prop.stat, getVariables(targetId));
 
-    const applyChildrenToTarget = function () {
-      actionContext.targets = [target];
-      return applyChildren(node, actionContext);
-    };
+  if (!save) {
+    result.appendLog({
+      name: 'Saving throw error',
+      value: 'No saving throw found: ' + prop.stat,
+      silenced: prop.silent,
+    }, [targetId]);
+    return applyDefaultAfterPropTasks(action, prop, [targetId], inputProvider);
+  }
 
-    const save = target.variables[prop.stat];
+  const rollModifierText = numberToSignedString(save.value, true);
+  const rollModifier = save.value;
 
-    if (!save) {
-      actionContext.addLog({
-        name: 'Saving throw error',
-        value: 'No saving throw found: ' + prop.stat,
-      });
-      return applyChildrenToTarget();
-    }
-
-    let rollModifierText = numberToSignedString(save.value, true);
-    let rollModifier = save.value
-    const { effectBonus, effectString } = applyUnresolvedEffects(save, scope)
-    rollModifierText += effectString;
-    rollModifier += effectBonus;
-
-    let value, values, resultPrefix;
-    if (save.advantage === 1) {
-      const [a, b] = rollDice(2, 20);
-      if (a >= b) {
-        value = a;
-        resultPrefix = `Advantage\n1d20 [ ${a}, ~~${b}~~ ] ${rollModifierText}`;
-      } else {
-        value = b;
-        resultPrefix = `Advantage\n1d20 [ ~~${a}~~, ${b} ] ${rollModifierText}`;
-      }
-    } else if (save.advantage === -1) {
-      const [a, b] = rollDice(2, 20);
-      if (a <= b) {
-        value = a;
-        resultPrefix = `Disadvantage\n1d20 [ ${a}, ~~${b}~~ ] ${rollModifierText}`;
-      } else {
-        value = b;
-        resultPrefix = `Disadvantage\n1d20 [ ~~${a}~~, ${b} ] ${rollModifierText}`;
-      }
+  let value, resultPrefix;
+  if (save.advantage === 1) {
+    const [[a, b]] = await inputProvider.rollDice([{ number: 2, diceSize: 20 }]);
+    if (a >= b) {
+      value = a;
+      resultPrefix = `Advantage\n1d20 [ ${a}, ~~${b}~~ ] ${rollModifierText}`;
     } else {
-      values = rollDice(1, 20);
-      value = values[0];
-      resultPrefix = `1d20 [ ${value} ] ${rollModifierText}`
+      value = b;
+      resultPrefix = `Advantage\n1d20 [ ~~${a}~~, ${b} ] ${rollModifierText}`;
     }
-    scope['~saveDiceRoll'] = { value };
-    const result = value + rollModifier || 0;
-    scope['~saveRoll'] = { value: result };
-    const saveSuccess = result >= dc;
-    if (saveSuccess) {
-      scope['~saveSucceeded'] = { value: true };
+  } else if (save.advantage === -1) {
+    const [[a, b]] = await inputProvider.rollDice([{ number: 2, diceSize: 20 }]);
+    if (a <= b) {
+      value = a;
+      resultPrefix = `Disadvantage\n1d20 [ ${a}, ~~${b}~~ ] ${rollModifierText}`;
     } else {
-      scope['~saveFailed'] = { value: true };
+      value = b;
+      resultPrefix = `Disadvantage\n1d20 [ ~~${a}~~, ${b} ] ${rollModifierText}`;
     }
-    if (!prop.silent) actionContext.addLog({
-      name: saveSuccess ? 'Successful save' : 'Failed save',
-      value: resultPrefix + '\n**' + result + '**',
-      inline: true,
-    });
-    return applyChildrenToTarget();
-  });
-  // reset the targets after the save to each child
-  actionContext.targets = originalTargets;
+  } else {
+    const [[rolledValue]] = await inputProvider.rollDice([{ number: 1, diceSize: 20 }]);
+    value = rolledValue;
+    resultPrefix = `1d20 [ ${value} ] ${rollModifierText}`
+  }
+  result.pushScope = {};
+  result.pushScope['~saveDiceRoll'] = { value };
+  const resultValue = value + rollModifier || 0;
+  result.pushScope['~saveRoll'] = { value: resultValue };
+  const saveSuccess = resultValue >= dc;
+  if (saveSuccess) {
+    result.pushScope['~saveSucceeded'] = { value: true };
+    result.pushScope['~saveFailed'] = { value: false };
+  } else {
+    result.pushScope['~saveFailed'] = { value: true };
+    result.pushScope['~saveSucceeded'] = { value: false };
+  }
+  result.appendLog({
+    name: saveSuccess ? 'Successful save' : 'Failed save',
+    value: resultPrefix + '\n**' + resultValue + '**',
+    inline: true,
+    silenced: prop.silent,
+  }, [targetId]);
+  return applyDefaultAfterPropTasks(action, prop, [targetId], inputProvider);
 }

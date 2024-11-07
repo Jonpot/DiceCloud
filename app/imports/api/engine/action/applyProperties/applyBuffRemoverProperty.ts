@@ -4,20 +4,37 @@ import getPropertyTitle from '/imports/api/utility/getPropertyTitle';
 import { findLast, filter, difference, intersection } from 'lodash';
 import { getPropertiesOfType, getPropertyAncestors } from '/imports/api/engine/loadCreatures';
 import getEffectivePropTags from '/imports/api/engine/computation/utility/getEffectivePropTags';
-import { applyDefaultAfterPropTasks } from '/imports/api/engine/action/functions/applyTaskGroups';
+import { applyDefaultAfterPropTasks, applyTaskToEachTarget } from '/imports/api/engine/action/functions/applyTaskGroups';
 import { EngineAction } from '/imports/api/engine/action/EngineActions';
+import InputProvider from '/imports/api/engine/action/functions/userInput/InputProvider';
 
-export default function applyBuffRemoverProperty(
-  task: PropTask, action: EngineAction, result: TaskResult, userInput
+export default async function applyBuffRemoverProperty(
+  task: PropTask, action: EngineAction, result: TaskResult, userInput: InputProvider
 ) {
   const prop = task.prop;
 
-  if (prop.name && !prop.silent) {
+  const targetIds = prop.target === 'self' ? [action.creatureId] : task.targetIds;
+
+  if (prop.name) {
     // Log Name
     result.appendLog({
       name: getPropertyTitle(prop),
+      silenced: prop.silent,
     }, task.targetIds)
   }
+
+  if (targetIds.length > 1) {
+    return applyTaskToEachTarget(action, task, targetIds, userInput);
+  }
+
+  if (!targetIds.length) {
+    return applyDefaultAfterPropTasks(action, prop, task.targetIds, userInput);
+  }
+
+  if (targetIds.length !== 1) {
+    throw 'At this step, only a single target is supported'
+  }
+  const targetId = targetIds[0];
 
   // Remove buffs
   if (prop.targetParentBuff) {
@@ -28,13 +45,14 @@ export default function applyBuffRemoverProperty(
       result.appendLog({
         name: 'Error',
         value: 'Buff remover does not have a parent buff to remove',
-      }, task.targetIds);
+        silenced: prop.silent,
+      }, [targetId]);
       return;
     }
     removeBuff(nearestBuff, prop, result);
   } else {
     // Get all the buffs targeted by tags
-    const allBuffs = getPropertiesOfType(action.creatureId, 'buff');
+    const allBuffs = getPropertiesOfType(targetId, 'buff');
     const targetedBuffs = filter(allBuffs, buff => {
       if (buff.inactive) return false;
       if (buffRemoverMatchTags(prop, buff)) return true;
@@ -55,7 +73,7 @@ export default function applyBuffRemoverProperty(
       }
     }
   }
-  applyDefaultAfterPropTasks(action, prop, task.targetIds, userInput);
+  return applyDefaultAfterPropTasks(action, prop, task.targetIds, userInput);
 }
 
 function removeBuff(buff: any, prop, result: TaskResult) {
@@ -65,7 +83,7 @@ function removeBuff(buff: any, prop, result: TaskResult) {
     contents: [{
       name: 'Removed',
       value: `${buff.name || 'Buff'}`,
-      silenced: prop.silent,
+      ...prop.silent && { silenced: true },
     }],
   });
 }

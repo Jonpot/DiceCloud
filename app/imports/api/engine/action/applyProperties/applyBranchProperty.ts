@@ -1,21 +1,22 @@
+import { filter } from 'lodash';
 import { EngineAction } from '/imports/api/engine/action/EngineActions';
-import { applyAfterPropTasksForSingleChild, applyAfterTasksSkipChildren, applyDefaultAfterPropTasks, applyTaskToEachTarget } from '/imports/api/engine/action/functions/applyTaskGroups';
+import InputProvider from '/imports/api/engine/action/functions/userInput/InputProvider';
+import { applyAfterPropTasksForSingleChild, applyAfterPropTasksForSomeChildren, applyAfterTasksSkipChildren, applyDefaultAfterPropTasks, applyTaskToEachTarget } from '/imports/api/engine/action/functions/applyTaskGroups';
 import { getEffectiveActionScope } from '/imports/api/engine/action/functions/getEffectiveActionScope';
 import recalculateCalculation from '/imports/api/engine/action/functions/recalculateCalculation';
 import { PropTask } from '/imports/api/engine/action/tasks/Task';
 import TaskResult from '/imports/api/engine/action/tasks/TaskResult';
 import { getPropertyChildren } from '/imports/api/engine/loadCreatures';
-import rollDice from '/imports/parser/rollDice';
 
 export default async function applyBranchProperty(
-  task: PropTask, action: EngineAction, result: TaskResult, userInput
+  task: PropTask, action: EngineAction, result: TaskResult, userInput: InputProvider
 ): Promise<void> {
   const prop = task.prop;
   const targets = task.targetIds;
 
   switch (prop.branchType) {
     case 'if': {
-      await recalculateCalculation(prop.condition, action, 'reduce');
+      await recalculateCalculation(prop.condition, action, 'reduce', userInput);
       if (prop.condition?.value) {
         return applyDefaultAfterPropTasks(action, prop, targets, userInput);
       } else {
@@ -27,11 +28,12 @@ export default async function applyBranchProperty(
       if (!children.length) {
         return applyAfterTasksSkipChildren(action, prop, targets, userInput);
       }
-      await recalculateCalculation(prop.condition, action, 'reduce');
+      await recalculateCalculation(prop.condition, action, 'reduce', userInput);
       if (!isFinite(prop.condition?.value)) {
         result.appendLog({
           name: 'Branch Error',
-          value: 'Index did not resolve into a valid number'
+          value: `Index did not resolve into a valid number, got \`${prop.condition?.value}\` instead`,
+          silenced: prop.silent,
         }, targets);
         return applyAfterTasksSkipChildren(action, prop, targets, userInput);
       }
@@ -46,7 +48,8 @@ export default async function applyBranchProperty(
       if (scope['~attackHit']?.value) {
         if (!targets.length && !prop.silent) {
           result.appendLog({
-            value: '**On hit**'
+            value: '**On hit**',
+            silenced: prop.silent,
           }, targets);
         }
         return applyDefaultAfterPropTasks(action, prop, targets, userInput);
@@ -59,7 +62,8 @@ export default async function applyBranchProperty(
       if (scope['~attackMiss']?.value) {
         if (!targets.length && !prop.silent) {
           result.appendLog({
-            value: '**On miss**'
+            value: '**On miss**',
+            silenced: prop.silent,
           }, targets);
         }
         return applyDefaultAfterPropTasks(action, prop, targets, userInput);
@@ -72,7 +76,8 @@ export default async function applyBranchProperty(
       if (scope['~saveFailed']?.value) {
         if (!targets.length && !prop.silent) {
           result.appendLog({
-            value: '**On failed save**'
+            value: '**On failed save**',
+            silenced: prop.silent,
           }, targets);
         }
         return applyDefaultAfterPropTasks(action, prop, targets, userInput);
@@ -85,7 +90,8 @@ export default async function applyBranchProperty(
       if (scope['~saveSucceeded']?.value) {
         if (!targets.length && !prop.silent) {
           result.appendLog({
-            value: '**On save**'
+            value: '**On save**',
+            silenced: prop.silent,
           }, targets);
         }
         return applyDefaultAfterPropTasks(action, prop, targets, userInput);
@@ -96,7 +102,7 @@ export default async function applyBranchProperty(
     case 'random': {
       const children = await getPropertyChildren(action.creatureId, prop);
       if (children.length) {
-        const index = rollDice(1, children.length)[0];
+        const index = (await userInput.rollDice([{ number: 1, diceSize: children.length }]))[0][0];
         const child = children[index - 1];
         return applyAfterPropTasksForSingleChild(action, prop, child, targets, userInput);
       } else {
@@ -109,21 +115,17 @@ export default async function applyBranchProperty(
       }
       return applyDefaultAfterPropTasks(action, prop, targets, userInput);
     case 'choice': {
-      let index;
-      if (action._isSimulation) {
-        index = await userInput(prop);
-      } else {
-        // TODO
-        throw 'Reading stored user input not implemented'
-      }
       const children = await getPropertyChildren(action.creatureId, prop);
-      if (!children.length) {
+      let choices: string[];
+      let chosenChildren: typeof children = [];
+      if (children.length) {
+        choices = await userInput.choose(children);
+        chosenChildren = filter(children, child => choices.includes(child._id));
+      }
+      if (!children.length || !chosenChildren.length) {
         return applyAfterTasksSkipChildren(action, prop, targets, userInput);
       }
-      if (!isFinite(index) || index < 0) index = 0;
-      if (index > children.length - 1) index = children.length - 1;
-      const child = children[index];
-      return applyAfterPropTasksForSingleChild(action, prop, child, targets, userInput);
+      return applyAfterPropTasksForSomeChildren(action, prop, chosenChildren, targets, userInput);
     }
   }
 }

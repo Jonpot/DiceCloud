@@ -201,7 +201,7 @@
 <script lang="js">
 import Creatures from '/imports/api/creature/creatures/Creatures';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
-import { docsToForest as nodeArrayToTree } from '/imports/api/parenting/parentingFunctions';
+import { docsToForest } from '/imports/api/parenting/parentingFunctions';
 import BuildTreeNodeList from '/imports/client/ui/creature/buildTree/BuildTreeNodeList.vue';
 import SlotCardsToFill from '/imports/client/ui/creature/slots/SlotCardsToFill.vue';
 import CreatureVariables from '/imports/api/creature/creatures/CreatureVariables';
@@ -272,7 +272,6 @@ export default {
       return this.hiddenSlots.length + this.hiddenPointBuys.length;
     },
   },
-  // @ts-ignore Meteor isn't defined on vue
   meteor: {
     creature(){
       return Creatures.findOne(this.creatureId);
@@ -320,7 +319,7 @@ export default {
         removed: {$ne: true},
         inactive: {$ne: true},
       }, {
-        sort: {order: 1}
+        sort: {left: 1}
       }).fetch();
     },
     classLevels() {
@@ -332,7 +331,7 @@ export default {
         removed: {$ne: true},
         inactive: {$ne: true},
       }, {
-        sort: {order: 1}
+        sort: {left: 1}
       });
     },
     slotBuildTree(){
@@ -346,22 +345,18 @@ export default {
         ],
         removed: {$ne: true},
         inactive: {$ne: true},
-      }, {
-        sort: {order: 1}
       });
       const slotIds = slots.map(s => s._id);
       const slotChildren = CreatureProperties.find({
-        'parent.id': {$in: slotIds},
+        'parentId': {$in: slotIds},
         removed: {$ne: true},
-      }, {
-        sort: { order: 1 },
       });
-      const tree = nodeArrayToTree([
+      const tree = docsToForest([
         ...slots.fetch(),
         ...slotChildren.fetch()
-      ]);
+      ].sort((a, b) => a.left - b.left));
       traverse(tree, (child, parents) => {
-        const model = child.node;
+        const model = child.doc;
         const isSlotWithSpace = model.type === 'propertySlot' && (
           model.spaceLeft > 0 || 
           !model.quantityExpected ||
@@ -370,7 +365,7 @@ export default {
         if(isSlotWithSpace) {
           model._canFill = true;
           parents.forEach(node => {
-            node.node._descendantCanFill = true;
+            node.doc._descendantCanFill = true;
           });
         }
       });

@@ -7,12 +7,19 @@ import { getFilter } from '/imports/api/parenting/parentingFunctions';
 
 const COMPUTE_DEBOUNCE_TIME = 100; // ms
 export const loadedCreatures: Map<string, LoadedCreature> = new Map(); // creatureId => {creature, properties, etc.}
-// TODO: migrate to nested sets
+
+// function logLoadedCreatures() {
+//   let creatureLoadString = '';
+//   for (const [key, value] of loadedCreatures.entries()) {
+//     creatureLoadString += `${key}: ${value.subs.size}\n`;
+//   }
+//   console.log(creatureLoadString);
+// }
 
 export function loadCreature(creatureId: string, subscription: Tracker.Computation) {
   if (!creatureId) throw 'creatureId is required';
   let creature = loadedCreatures.get(creatureId);
-  if (!creature || !creature.subs.has(subscription)) {
+  if (!creature?.subs.has(subscription)) {
     subscription.onStop(() => {
       unloadCreature(creatureId, subscription);
     });
@@ -23,6 +30,7 @@ export function loadCreature(creatureId: string, subscription: Tracker.Computati
     creature = new LoadedCreature(subscription, creatureId);
     loadedCreatures.set(creatureId, creature);
   }
+  // logLoadedCreatures()
 }
 
 function unloadCreature(creatureId, subscription) {
@@ -34,11 +42,13 @@ function unloadCreature(creatureId, subscription) {
     creature.stop();
     loadedCreatures.delete(creatureId);
   }
+  // logLoadedCreatures()
 }
 
 export function getSingleProperty(creatureId: string, propertyId: string) {
   const creature = loadedCreatures.get(creatureId)
   const property = creature?.properties.get(propertyId);
+  if (property?.removed) return;
   if (property) {
     return EJSON.clone(property);
   }
@@ -52,11 +62,12 @@ export function getSingleProperty(creatureId: string, propertyId: string) {
   return prop;
 }
 
-export function getProperties(creatureId) {
+export function getProperties(creatureId: string): CreatureProperty[] {
   const creature = loadedCreatures.get(creatureId);
   if (creature) {
-    const props = Array.from(creature.properties.values());
-    props.sort((a, b) => a.left - b.left);
+    const props = Array.from(creature.properties.values())
+      .sort((a, b) => a.left - b.left)
+      .filter(prop => !prop.removed);
     return EJSON.clone(props);
   }
   // console.time(`Cache miss on creature properties: ${creatureId}`)
@@ -73,13 +84,9 @@ export function getProperties(creatureId) {
 export function getPropertiesOfType(creatureId, propType) {
   const creature = loadedCreatures.get(creatureId);
   if (creature) {
-    const props: CreatureProperty[] = []
-    for (const prop of creature.properties.values()) {
-      if (prop.type === propType) {
-        props.push(prop);
-      }
-    }
-    props.sort((a, b) => a.left - b.left);
+    const props = Array.from(creature.properties.values())
+      .filter(prop => !prop.removed && prop.type === propType)
+      .sort((a, b) => a.left - b.left);
     return EJSON.clone(props);
   }
   // console.time(`Cache miss on creature properties: ${creatureId}`)
@@ -94,7 +101,33 @@ export function getPropertiesOfType(creatureId, propType) {
   return props;
 }
 
-export function getCreature(creatureId) {
+/**
+ * Get the properties of a creature that matches the filters given
+ * @param creatureId The id of the creature
+ * @param filterFn A function that returns true if the given prop matches the filter
+ * @param mongoFilter A mongo selector that is exactly equal to the above function
+ */
+export function getPropertiesByFilter(creatureId, filterFn: (any) => boolean, mongoFilter: Mongo.Selector<object>) {
+  const creature = loadedCreatures.get(creatureId);
+  if (creature) {
+    const props: CreatureProperty[] = Array.from(creature.properties.values())
+      .filter(filterFn)
+      .sort((a, b) => a.left - b.left);
+    return EJSON.clone(props);
+  }
+  // console.time(`Cache miss on creature properties: ${creatureId}`)
+  const props = CreatureProperties.find({
+    'root.id': creatureId,
+    'removed': { $ne: true },
+    ...mongoFilter
+  }, {
+    sort: { left: 1 },
+  }).fetch();
+  // console.timeEnd(`Cache miss on creature properties: ${creatureId}`);
+  return props;
+}
+
+export function getCreature(creatureId: string) {
   const loadedCreature = loadedCreatures.get(creatureId);
   const loadedCreatureDoc = loadedCreature?.creature;
   if (loadedCreatureDoc) {
@@ -106,7 +139,7 @@ export function getCreature(creatureId) {
   return creature;
 }
 
-export function getVariables(creatureId) {
+export function getVariables(creatureId: string) {
   const loadedCreature = loadedCreatures.get(creatureId);
   const loadedVariables = loadedCreature?.variables;
   if (loadedVariables) {
@@ -196,7 +229,7 @@ export function getPropertyChildren(creatureId, property) {
     if (!creature) return [];
     const props: CreatureProperty[] = [];
     for (const prop of creature.properties.values()) {
-      if (prop.parentId === property._id) {
+      if (prop.parentId === property._id && prop.removed !== true) {
         props.push(prop);
       }
     }
@@ -204,10 +237,10 @@ export function getPropertyChildren(creatureId, property) {
     return cloneProps.sort((a, b) => a.left - b.left);
   } else {
     return CreatureProperties.find({
-      'parent.id': property._id,
+      'parentId': property._id,
       removed: { $ne: true },
     }, {
-      sort: { order: 1 },
+      sort: { left: 1 },
     }).fetch();
   }
 }
@@ -236,9 +269,6 @@ class LoadedCreature {
       // Observe all creature properties which are needed for computation
       self.propertyObserver = CreatureProperties.find({
         'root.id': creatureId,
-        removed: { $ne: true },
-      }, {
-        sort: { order: 1 },
       }).observeChanges({
         added(id, fields) {
           fields._id = id;

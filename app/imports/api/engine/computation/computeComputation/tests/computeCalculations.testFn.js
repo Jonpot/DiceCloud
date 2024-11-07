@@ -1,12 +1,14 @@
-import { buildComputationFromProps } from '/imports/api/engine/computation/buildCreatureComputation.js';
+import { buildComputationFromProps } from '/imports/api/engine/computation/buildCreatureComputation';
 import { assert } from 'chai';
-import computeCreatureComputation from '../../computeCreatureComputation.js';
-import clean from '../../utility/cleanProp.testFn.js';
+import computeCreatureComputation from '../../computeCreatureComputation';
+import clean from '../../utility/cleanProp.testFn';
 
-export default function () {
+export default async function () {
   const computation = buildComputationFromProps(testProperties);
-  computeCreatureComputation(computation);
+  await computeCreatureComputation(computation);
   const prop = id => computation.propsById[id];
+  // Tag targeted effects make complicated parse trees
+  assert.equal(prop('attackAction2').attackRoll.value, 'min(3 + d4, d100)', 'Tag targeted effects change the attack roll correctly');
   // Tags target effects on attributes
   assert.equal(prop('taggedCon').value, 26, 'Tagged targeted effects affect attribute values');
   assert.equal(prop('taggedCon').baseValue.value, 10, 'Tag targeted effects target the attribute itself, not the base value');
@@ -14,7 +16,6 @@ export default function () {
   assert.equal(prop('attackAction').attackRoll.value, 20, 'Tag targeted effects change the attack roll correctly');
   // Tag target effects can deal with rolls
   assert.equal(prop('attackAction').attackRoll.value, 20, 'Tag targeted effects change the attack roll correctly');
-  assert.equal(prop('attackAction2').attackRoll.value, 'min(3 + d4, d100)', 'Tag targeted effects change the attack roll correctly');
 }
 
 var testProperties = [
@@ -54,7 +55,6 @@ var testProperties = [
   clean({
     _id: 'attackAction',
     type: 'action',
-    ancestors: [{ id: 'charId' }],
     attackRoll: {
       calculation: '3'
     },
@@ -85,7 +85,6 @@ var testProperties = [
   clean({
     _id: 'attackAction2',
     type: 'action',
-    ancestors: [{ id: 'charId' }],
     attackRoll: {
       calculation: '3'
     },

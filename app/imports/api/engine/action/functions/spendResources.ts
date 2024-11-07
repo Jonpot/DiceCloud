@@ -1,9 +1,11 @@
 import { getFromScope } from '/imports/api/creature/creatures/CreatureVariables';
 import { EngineAction } from '/imports/api/engine/action/EngineActions';
 import { getEffectiveActionScope } from '/imports/api/engine/action/functions/getEffectiveActionScope';
+import recalculateCalculation from '/imports/api/engine/action/functions/recalculateCalculation';
 import TaskResult from '/imports/api/engine/action/tasks/TaskResult';
 import applyTask from '/imports/api/engine/action/tasks/applyTask';
 import { getSingleProperty } from '/imports/api/engine/loadCreatures';
+import { hasAncestorRelationship } from '/imports/api/parenting/parentingFunctions';
 
 export default async function spendResources(
   action: EngineAction, prop, targetIds: string[], result: TaskResult, userInput
@@ -31,7 +33,7 @@ export default async function spendResources(
     for (const att of prop.resources.attributesConsumed) {
       const scope = await getEffectiveActionScope(action);
       const statToDamage = await getFromScope(att.variableName, scope);
-      await recalculateCalculation(att.quantity, action, 'reduce');
+      await recalculateCalculation(att.quantity, action, 'reduce', userInput);
       await applyTask(action, {
         prop,
         targetIds: [action.creatureId],
@@ -48,7 +50,7 @@ export default async function spendResources(
   // Iterate through all the items consumed and consume them
   if (prop.resources?.itemsConsumed?.length) {
     for (const itemConsumed of prop.resources.itemsConsumed) {
-      await recalculateCalculation(itemConsumed.quantity, action, 'reduce');
+      await recalculateCalculation(itemConsumed.quantity, action, 'reduce', userInput);
       if (!itemConsumed.itemId) {
         throw 'No ammo was selected';
       }
@@ -61,6 +63,7 @@ export default async function spendResources(
         !quantity ||
         !isFinite(quantity)
       ) continue;
+
       await applyTask(action, {
         prop,
         targetIds,
@@ -68,6 +71,9 @@ export default async function spendResources(
         params: {
           value: quantity,
           item,
+          // If the item is an ancestor or descendant of this prop, skip the item's children to avoid
+          // an infinite loop
+          skipChildren: hasAncestorRelationship(item, prop),
         },
       }, userInput);
     }

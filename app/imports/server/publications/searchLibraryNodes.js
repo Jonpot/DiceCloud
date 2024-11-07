@@ -5,6 +5,7 @@ import getCreatureLibraryIds from '/imports/api/library/getCreatureLibraryIds';
 import getUserLibraryIds from '/imports/api/library/getUserLibraryIds';
 import { assertViewPermission } from '/imports/api/sharing/sharingPermissions';
 import escapeRegex from '/imports/api/utility/escapeRegex';
+import { getFilter } from '/imports/api/parenting/parentingFunctions';
 
 Meteor.publish('selectedLibraryNodes', function (selectedNodeIds) {
   check(selectedNodeIds, Array);
@@ -13,10 +14,12 @@ Meteor.publish('selectedLibraryNodes', function (selectedNodeIds) {
     selectedNodeIds = selectedNodeIds.slice(0, 20);
   }
   let libraryViewPermissions = {};
+  const nodes = [];
   // Check view permissions of all libraries
   for (let id of selectedNodeIds) {
     let node = LibraryNodes.findOne(id);
     if (!node) continue;
+    nodes.push(node);
     let libraryId = node.ancestors[0].id;
     if (libraryViewPermissions[id]) {
       continue;
@@ -27,6 +30,9 @@ Meteor.publish('selectedLibraryNodes', function (selectedNodeIds) {
           readers: 1,
           writers: 1,
           public: 1,
+          root: 1,
+          left: 1,
+          right: 1,
         }
       });
       assertViewPermission(library, this.userId);
@@ -37,7 +43,7 @@ Meteor.publish('selectedLibraryNodes', function (selectedNodeIds) {
   return [LibraryNodes.find({
     $or: [
       { _id: { $in: selectedNodeIds } },
-      { 'ancestors.id': { $in: selectedNodeIds } },
+      { ...getFilter.descendantsOfAll(nodes) },
     ],
   })];
 });
@@ -63,7 +69,7 @@ Meteor.publish('searchLibraryNodes', function (creatureId) {
 
     // Build a filter for nodes in those libraries that match the type
     let filter = {
-      'ancestors.id': { $in: libraryIds },
+      ...getFilter.descendantsOfAllRoots(libraryIds),
       removed: { $ne: true },
       searchable: true //library nodes must opt-in
     };

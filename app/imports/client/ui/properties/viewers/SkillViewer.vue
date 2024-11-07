@@ -123,6 +123,7 @@ import SkillProficiency from '/imports/client/ui/properties/components/skills/Sk
 import getProficiencyIcon from '/imports/client/ui/utility/getProficiencyIcon';
 import sortEffects from '/imports/client/ui/utility/sortEffects';
 import PropertyTargetTags from '/imports/client/ui/properties/viewers/shared/PropertyTargetTags.vue';
+import { getFilter } from '/imports/api/parenting/parentingFunctions';
 
 export default {
   components: {
@@ -193,7 +194,7 @@ export default {
       return CreatureProperties.find({
           _id: {$in: this.model.proficiencyIds},
       }, {
-        sort: {order: 1}
+        sort: {left: 1}
       }).fetch();
     },
     ability() {
@@ -201,12 +202,12 @@ export default {
       let ability = this.model.ability;
       if (!creatureId || !ability) return;
       let abilityProp = CreatureProperties.findOne({
+        ...getFilter.descendantsOfRoot(creatureId),
         variableName: ability,
         type: 'attribute',
         removed: { $ne: true },
         inactive: { $ne: true },
         overridden: { $ne: true },
-        'ancestors.id': creatureId,
       });
       if (!abilityProp) return;
       return {
@@ -215,16 +216,16 @@ export default {
         operation: 'base',
         amount: { value: abilityProp.modifier },
         stats: [this.model.variableName],
-        ancestors: abilityProp.ancestors,
+        root: abilityProp.root,
       }
     },
     proficiencyBonus() {
       return CreatureProperties.findOne({
+        ...getFilter.descendantsOfRoot(this.context.creatureId),
         variableName: 'proficiencyBonus',
         overridden: { $ne: true },
         removed: { $ne: true },
         inactive: { $ne: true },
-        'ancestors.id': this.context.creatureId,
       })?.value;
     },
   },

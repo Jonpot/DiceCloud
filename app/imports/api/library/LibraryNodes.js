@@ -158,16 +158,19 @@ const insertNode = new ValidatedMethod({
     const parentDoc = fetchDocByRef(parentRef);
 
     // Check permission to edit
-    let root;
+    let rootLibrary;
     if (parentRef.collection === 'libraries') {
-      root = parentDoc;
+      rootLibrary = parentDoc;
     } else if (parentRef.collection === 'libraryNodes') {
-      root = Libraries.findOne(parentDoc.root.id);
+      rootLibrary = Libraries.findOne(parentDoc.root.id);
       libraryNode.parentId = parentRef.id;
     } else {
       throw `${parentRef.collection} is not a valid parent collection`
     }
-    assertEditPermission(root, this.userId);
+    assertEditPermission(rootLibrary, this.userId);
+
+    // Set the root of the node we are inserting
+    libraryNode.root = { collection: 'libraries', id: rootLibrary._id };
 
     // Remove its ID if it came with one to force a random one to be generated
     // server-side
@@ -183,7 +186,7 @@ const insertNode = new ValidatedMethod({
     }
 
     // Tree structure changed by insert, reorder the tree
-    rebuildNestedSets(LibraryNodes, root._id);
+    rebuildNestedSets(LibraryNodes, rootLibrary._id);
 
     // Return the id of the inserted node
     return nodeId;
@@ -284,7 +287,7 @@ const softRemoveLibraryNode = new ValidatedMethod({
   run({ _id }) {
     let node = LibraryNodes.findOne(_id);
     assertNodeEditPermission(node, this.userId);
-    softRemove({ _id, collection: LibraryNodes });
+    softRemove(LibraryNodes, node);
   }
 });
 
@@ -303,7 +306,7 @@ const restoreLibraryNode = new ValidatedMethod({
     let node = LibraryNodes.findOne(_id);
     assertNodeEditPermission(node, this.userId);
     // Do work
-    restore(LibraryNodes, _id);
+    restore(LibraryNodes, node);
   }
 });
 

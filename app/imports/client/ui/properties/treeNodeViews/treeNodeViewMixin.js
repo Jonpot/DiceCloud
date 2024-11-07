@@ -12,7 +12,6 @@ export default {
     },
     selected: Boolean,
     hideIcon: Boolean,
-    showExternalDetails: Boolean,
   },
   computed: {
     title() {

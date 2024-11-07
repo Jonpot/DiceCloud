@@ -1,4 +1,3 @@
-import { assert } from 'chai';
 import '/imports/api/simpleSchemaConfig.js';
 import CreatureProperties from '/imports/api/creature/creatureProperties/CreatureProperties';
 import { propsFromForest } from '/imports/api/properties/tests/propTestBuilder.testFn';
@@ -7,18 +6,24 @@ import CreatureVariables from '/imports/api/creature/creatures/CreatureVariables
 import computeCreature from '/imports/api/engine/computeCreature';
 import { loadCreature } from '/imports/api/engine/loadCreatures';
 import EngineActions, { EngineAction } from '/imports/api/engine/action/EngineActions';
-import { applyAction } from '/imports/api/engine/action/functions/applyAction';
+import applyAction from '/imports/api/engine/action/functions/applyAction';
 import { LogContent, Mutation, Removal, Update } from '/imports/api/engine/action/tasks/TaskResult';
-
+import inputProvider from './userInput/inputProviderForTests.testFn';
 /**
  * Removes all creatures, properties, and creatureVariable documents from the database
  */
 export async function removeAllCreaturesAndProps() {
-  return Promise.all([
-    CreatureProperties.removeAsync({}),
-    Creatures.removeAsync({}),
-    CreatureVariables.removeAsync({}),
-  ]);
+  if (Meteor.isServer) {
+    return Promise.all([
+      CreatureProperties.removeAsync({}),
+      Creatures.removeAsync({}),
+      CreatureVariables.removeAsync({}),
+    ]);
+  } else {
+    CreatureProperties.find({}).forEach(doc => CreatureProperties.remove(doc._id));
+    Creatures.find({}).forEach(doc => Creatures.remove(doc._id));
+    CreatureVariables.find({}).forEach((doc: any) => CreatureVariables.remove(doc._id));
+  }
 }
 
 /**
@@ -49,9 +54,9 @@ type TestCreature = {
 }
 
 /**
- * A list of 100 random Ids
+ * get a list of random Ids
  */
-export const randomIds = new Array(100).fill(undefined).map(() => Random.id());
+export const getRandomIds = (count) => new Array(count).fill(undefined).map(() => Random.id());
 
 /**
  * Creates a new Engine Action and applies the specified creature property
@@ -59,12 +64,12 @@ export const randomIds = new Array(100).fill(undefined).map(() => Random.id());
  * @param userInputFn A function that simulates user input
  * @returns The Engine Action with mutations resulting from running the action
  */
-export async function runActionById(propId, targetIds?, userInputFn = () => 0) {
+export async function runActionById(propId, targetIds?, userInput = inputProvider) {
   const prop = await CreatureProperties.findOneAsync(propId);
   const actionId = await createAction(prop, targetIds);
   const action = await EngineActions.findOneAsync(actionId);
   if (!action) throw 'Action is expected to exist';
-  await applyAction(action, userInputFn, { simulate: true });
+  await applyAction(action, userInput, { simulate: true });
   return action;
 }
 
@@ -77,10 +82,12 @@ export async function runActionById(propId, targetIds?, userInputFn = () => 0) {
 function createAction(prop: any, targetIds?: string[]) {
   const action: EngineAction = {
     creatureId: prop.root.id,
-    rootPropId: prop._id,
     results: [],
     taskCount: 0,
-    targetIds,
+    task: {
+      prop,
+      targetIds: targetIds || [],
+    }
   };
   return EngineActions.insertAsync(action);
 }

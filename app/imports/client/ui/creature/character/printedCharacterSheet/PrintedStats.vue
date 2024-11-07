@@ -1,7 +1,7 @@
 <template lang="html">
   <div class="stats">
     <div
-      class="d-flex wrap justify-space-between px-2 pt-3 pb-1"
+      class="d-flex wrap justify-space-between px-2 pt-3 pb-2"
       style="page-break-after: avoid"
     >
       <div
@@ -363,7 +363,7 @@ import { uniqBy } from 'lodash';
 import { getFilter } from '/imports/api/parenting/parentingFunctions';
 
 const getProperties = function (creature, filter, options = {
-  sort: { order: 1 }
+  sort: { left: 1 }
 }) {
   if (!creature) return;
   if (creature.settings.hideUnusedStats) {
@@ -434,7 +434,7 @@ export default {
         deactivatedByToggle: { $ne: true },
         showUI: true,
       }, {
-        sort: { order: 1 }
+        sort: { left: 1 }
       });
     },
     healthBars() {
