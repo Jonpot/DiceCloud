@@ -2,7 +2,7 @@ import Discord from 'discord.js'
 export default function sendWebhook({ webhookURL, data = {} }) {
 
   // check if this is a _discord_ webhook
-  if (!webhookURL || !webhookURL.includes('discordapp.com/api/webhooks')) {
+  if (!webhookURL || webhookURL.includes('discordapp.com/api/webhooks')) {
 
     //webhookURL = https://discordapp.com/api/webhooks/<id>/<token>
     let urlArray = webhookURL.split('/');
@@ -22,10 +22,14 @@ export default function sendWebhook({ webhookURL, data = {} }) {
     }
   }
   else {
-    // just send the data off as a POST request
+    // just send the data off as a POST request using Fetch API
     try {
-      HTTP.post(webhookURL, {
-        data,
+      fetch(webhookURL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
       });
     } catch (e) {
       console.error(e);
